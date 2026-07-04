@@ -16617,6 +16617,36 @@
             <imgdir name="1112916">
                 <string name="name" value="寂寞单身戒指" />
             </imgdir>
+            <imgdir name="1113000">
+                <string name="name" value="怪物卡戒指-阶段1" />
+            </imgdir>
+            <imgdir name="1113001">
+                <string name="name" value="怪物卡戒指-阶段2" />
+            </imgdir>
+            <imgdir name="1113002">
+                <string name="name" value="怪物卡戒指-阶段3" />
+            </imgdir>
+            <imgdir name="1113003">
+                <string name="name" value="怪物卡戒指-阶段4" />
+            </imgdir>
+            <imgdir name="1113004">
+                <string name="name" value="怪物卡戒指-阶段5" />
+            </imgdir>
+            <imgdir name="1113005">
+                <string name="name" value="怪物卡戒指-阶段6" />
+            </imgdir>
+            <imgdir name="1113006">
+                <string name="name" value="怪物卡戒指-阶段7" />
+            </imgdir>
+            <imgdir name="1113007">
+                <string name="name" value="怪物卡戒指-阶段8" />
+            </imgdir>
+            <imgdir name="1113008">
+                <string name="name" value="怪物卡戒指-阶段9" />
+            </imgdir>
+            <imgdir name="1113009">
+                <string name="name" value="怪物卡戒指-阶段10" />
+            </imgdir>
         </imgdir>
         <imgdir name="Shield">
             <imgdir name="1092000">
