@@ -33,8 +33,8 @@ function action(mode, type, selection)
 			else
 			{
 				// 生成随机数量
-				mesoQty = Math.floor(Math.random() * 501) + 500;     // 金币随机50-100万（可以根据需要调整）
-				cashQty = Math.floor(Math.random() * 101) + 100;  // 点券随机100-200
+				mesoQty = Math.floor(Math.random() * 91) + 10;     // 金币随机10-100万（可以根据需要调整）
+				cashQty = Math.floor(Math.random() * 10) + 1;     // 点券随机1-10万
 
 				cm.sendAcceptDecline("您确定要领取新手礼包吗？一个角色#r限领一次。#k\n\n\r\n"
 					+ "获得奖励：\n"
