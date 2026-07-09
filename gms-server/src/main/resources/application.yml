@@ -17,7 +17,7 @@ mybatis-flex:
       driver-class-name: com.mysql.cj.jdbc.Driver
       url: jdbc:mysql://localhost:3306/beidou?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
       username: root
-      password: root
+      password: 7602234z
   global-config:
     print-banner: false
 
@@ -60,7 +60,6 @@ gms:
     # 公网ip
     wan-host: 127.0.0.1
     # 局域网ip
-    lan-host: 127.0.0.1
     # 本地ip
     localhost: 127.0.0.1
     # 客户端登录端口
