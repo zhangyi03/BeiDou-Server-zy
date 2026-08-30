@@ -146,6 +146,20 @@ public class Server {
     public static long uptime = System.currentTimeMillis();
     private long nextTime;
 
+    /**
+     * 关停流程重入保护。
+     *
+     * shutdownInternal 可被多个路径并发调用：
+     *  - ShutdownCommand 走 TimerManager 延时调度
+     *  - ConfigService 用虚拟线程触发 restart
+     *  - ServerManager.destroy()（Spring 容器关闭钩子，等价于 addShutdownHook）
+     *  - ServerController.stopServer/restartServer
+     * synchronized 串行化调用方，但调用方仍会阻塞等锁——Spring 容器关闭钩子
+     * 在 System.exit 时若卡在等锁，会导致端口不释放、JVM 退出超时（"关了起不来"根因）。
+     * 用 volatile 标志让重入调用在 synchronized 外直接返回。
+     */
+    private volatile boolean shuttingDown = false;
+
     private static final NpcService npcService = ServerManager.getApplicationContext().getBean(NpcService.class);
     private static final NxCouponService nxCouponService = ServerManager.getApplicationContext().getBean(NxCouponService.class);
     private static final CharacterService characterService = ServerManager.getApplicationContext().getBean(CharacterService.class);
@@ -807,16 +821,29 @@ public class Server {
         }
     }
 
-    public void disbandAlliance(int id) {
+    public boolean removeAllianceFromMemory(int id) {
+        boolean synchronizedAllGuilds = true;
         synchronized (alliances) {
-            Alliance alliance = alliances.get(id);
+            Alliance alliance = alliances.remove(id);
             if (alliance != null) {
-                for (Integer gid : alliance.getGuilds()) {
-                    guilds.get(gid).setAllianceId(0);
+                synchronized (guilds) {
+                    for (Guild guild : guilds.values()) {
+                        if (guild.getAllianceId() != id) {
+                            continue;
+                        }
+                        try {
+                            guild.setAllianceIdInMemory(0);
+                            guild.resetAllianceGuildPlayersRankInMemory();
+                        } catch (RuntimeException e) {
+                            synchronizedAllGuilds = false;
+                            log.error(I18nUtil.getLogMessage("Server.alliance.error1"),
+                                    id, guild.getId(), e);
+                        }
+                    }
                 }
-                alliances.remove(id);
             }
         }
+        return synchronizedAllGuilds;
     }
 
     public void allianceMessage(int id, Packet packet, int exception, int guildex) {
@@ -834,51 +861,39 @@ public class Server {
         }
     }
 
-    public boolean addGuildtoAlliance(int aId, int guildId) {
-        Alliance alliance = alliances.get(aId);
-        if (alliance != null) {
-            alliance.addGuild(guildId);
-            guilds.get(guildId).setAllianceId(aId);
+    public boolean addGuildToAlliance(int aId, int guildId, int guildMasterId) {
+        Alliance alliance = getAlliance(aId);
+        Guild guild = guilds.get(guildId);
+        if (alliance == null || guild == null) {
+            return false;
+        }
+        synchronized (alliance) {
+            if (!alliance.addGuildAndSave(guildId, guildMasterId)) {
+                return false;
+            }
+            guild.setAllianceIdInMemory(aId);
+            guild.resetAllianceGuildPlayersRankInMemory();
             return true;
         }
-        return false;
     }
 
     public boolean removeGuildFromAlliance(int aId, int guildId) {
-        Alliance alliance = alliances.get(aId);
-        if (alliance != null) {
-            alliance.removeGuild(guildId);
-            guilds.get(guildId).setAllianceId(0);
+        Alliance alliance = getAlliance(aId);
+        Guild guild = guilds.get(guildId);
+        if (alliance == null || guild == null) {
+            return false;
+        }
+        synchronized (alliance) {
+            if (!alliance.canRemoveGuild(guildId)) {
+                return false;
+            }
+            if (!alliance.removeGuildAndSave(guildId)) {
+                return false;
+            }
+            guild.setAllianceIdInMemory(0);
+            guild.resetAllianceGuildPlayersRankInMemory();
             return true;
         }
-        return false;
-    }
-
-    public boolean setAllianceRanks(int aId, String[] ranks) {
-        Alliance alliance = alliances.get(aId);
-        if (alliance != null) {
-            alliance.setRankTitle(ranks);
-            return true;
-        }
-        return false;
-    }
-
-    public boolean setAllianceNotice(int aId, String notice) {
-        Alliance alliance = alliances.get(aId);
-        if (alliance != null) {
-            alliance.setNotice(notice);
-            return true;
-        }
-        return false;
-    }
-
-    public boolean increaseAllianceCapacity(int aId, int inc) {
-        Alliance alliance = alliances.get(aId);
-        if (alliance != null) {
-            alliance.increaseCapacity(inc);
-            return true;
-        }
-        return false;
     }
 
     public int createGuild(int leaderId, String name) {
@@ -957,17 +972,20 @@ public class Server {
         return 0;
     }
 
-    public boolean setGuildAllianceId(int gId, int aId) {
-        Guild guild = guilds.get(gId);
-        if (guild != null) {
-            guild.setAllianceId(aId);
-            return true;
+    public boolean setGuildAllianceIdInMemory(int guildId, int allianceId) {
+        Guild guild = guilds.get(guildId);
+        if (guild == null) {
+            return false;
         }
-        return false;
+        guild.setAllianceIdInMemory(allianceId);
+        return true;
     }
 
-    public void resetAllianceGuildPlayersRank(int gId) {
-        guilds.get(gId).resetAllianceGuildPlayersRank();
+    public void resetAllianceGuildPlayersRankInMemory(int guildId) {
+        Guild guild = guilds.get(guildId);
+        if (guild != null) {
+            guild.resetAllianceGuildPlayersRankInMemory();
+        }
     }
 
     public void leaveGuild(GuildCharacter mgc) {
@@ -1026,12 +1044,26 @@ public class Server {
         }
     }
 
-    public void disbandGuild(int gid) {
+    public boolean disbandGuild(int gid) {
+        Guild guild;
         synchronized (guilds) {
-            Guild g = guilds.get(gid);
-            g.disbandGuild();
-            guilds.remove(gid);
+            guild = guilds.get(gid);
         }
+        if (guild == null) {
+            log.warn(I18nUtil.getLogMessage("Server.disbandGuild.warn1"), gid);
+            return false;
+        }
+
+        // 家族解散包含数据库更新和跨频道广播，不能持有全局 guilds 锁执行。
+        // 否则任一步骤阻塞都会让所有登录线程卡在 getGuild()。
+        if (!guild.disbandGuild()) {
+            return false;
+        }
+
+        synchronized (guilds) {
+            guilds.remove(gid, guild);
+        }
+        return true;
     }
 
     public boolean increaseGuildCapacity(int gid) {
@@ -1614,7 +1646,31 @@ public class Server {
         return () -> shutdownInternal(restart);
     }
 
-    public synchronized void shutdownInternal(boolean restart) {
+    public void shutdownInternal(boolean restart) {
+        // 重入保护在 synchronized 外判断，避免 Spring 关闭钩子等调用方
+        // 在 System.exit 时卡在等锁导致 JVM 退出超时、端口不释放。
+        if (shuttingDown) {
+            log.warn("Server shutdownInternal skipped: already in progress (restart={})", restart);
+            return;
+        }
+        synchronized (this) {
+            if (shuttingDown) {
+                log.warn("Server shutdownInternal skipped: already in progress (restart={})", restart);
+                return;
+            }
+            shuttingDown = true;
+            try {
+                doShutdownInternal(restart);
+            } finally {
+                // restart 路径在 doShutdownInternal 末尾重置 shuttingDown=false，
+                // 以便 init() 启动后能再次响应关停调用；非 restart 路径同样重置，
+                // 让后续手动 startServer() 不被旧标志挡住。
+                shuttingDown = false;
+            }
+        }
+    }
+
+    private synchronized void doShutdownInternal(boolean restart) {
         log.info(I18nUtil.getLogMessage("Server.shutdownInternal.info1"), restart ?
                 I18nUtil.getLogMessage("Server.shutdownInternal.info2") : I18nUtil.getLogMessage("Server.shutdownInternal.info3"));
         if (getWorlds() == null) {
@@ -1648,6 +1704,8 @@ public class Server {
         if (restart) {
             log.info(I18nUtil.getLogMessage("Server.shutdownInternal.info5"));
             instance = null;
+            // 重置标志，让 init() 重新启动后能再次响应关停调用
+            shuttingDown = false;
             getInstance().init();
         }
     }

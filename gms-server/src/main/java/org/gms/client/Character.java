@@ -83,6 +83,7 @@ import org.gms.server.partyquest.MonsterCarnival;
 import org.gms.server.partyquest.MonsterCarnivalParty;
 import org.gms.server.partyquest.PartyQuest;
 import org.gms.server.quest.Quest;
+import org.gms.server.quest.medal.DynamicHairMedal;
 import org.gms.service.*;
 import org.gms.util.*;
 import org.gms.util.packets.WeddingPackets;
@@ -103,6 +104,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.IntPredicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -138,7 +140,6 @@ public class Character extends AbstractCharacterObject {
     @Setter
     @Getter
     private int gender;
-    @Setter
     @Getter
     private int hair;
     @Setter
@@ -408,6 +409,10 @@ public class Character extends AbstractCharacterObject {
     private int teleportContextMapId = MapId.NONE; // 传送上下文所属地图，跨图后自动失效
     private long teleportContextExpireTime = 0L; // 传送上下文过期时间戳（单调时钟纳秒）
     private byte teleportContextRemainingChecks = 0; // 传送上下文剩余可用攻击校验次数
+    // 宠物拾取传送补偿：内传送门后记录传送前玩家坐标，用于宠物旧位置物品捡取防误判
+    private Point petLootTeleportBeforePos = null;
+    private long petLootTeleportBeforePosTime = 0;
+    private static final long PET_LOOT_TELEPORT_CONTEXT_EXPIRE_NS = MILLISECONDS.toNanos(1500L);
     // 普通移动距离误判修正上下文：只覆盖“移动包后紧跟攻击包”的极短时间窗
     private static final long MOVEMENT_DISTANCE_CONTEXT_EXPIRE_NS = MILLISECONDS.toNanos(350L);
     private static final byte MOVEMENT_DISTANCE_CONTEXT_MAX_ATTACK_CHECKS = 1;
@@ -500,27 +505,28 @@ public class Character extends AbstractCharacterObject {
     private static final HpMpAlertService hpMpAlertService = ServerManager.getApplicationContext().getBean(HpMpAlertService.class);
     private static final InventoryService inventoryService = ServerManager.getApplicationContext().getBean(InventoryService.class);
 
-    /**
-     * 最后攻击时间
-     * 用来校验攻击速度是否过快
-     */
-    private final ConcurrentHashMap<Integer, Long> lastAttackTimes = new ConcurrentHashMap<>();
+    /** 各技能原始时间戳，仅被 >= MIN_INTERVAL 的正常包更新，暴发包透明通过 */
+    private final ConcurrentHashMap<Integer, Long> normalAttackTimes = new ConcurrentHashMap<>();
 
     /**
-     * 原子更新指定技能的最后攻击时间，并返回与上次记录的时间间隔（毫秒）。
-     * 若是首次记录或出现时钟回退，返回 Long.MAX_VALUE 表示本次不参与间隔判定。
+     * 获取指定技能距上次攻击的间隔毫秒数，并更新最后攻击时间。
+     * 间隔 < MIN_INTERVAL 时不更新时间戳，视为网络抖动透明跳过。
+     * 首次调用或时钟回退时返回 Long.MAX_VALUE，本次不参与间隔判定。
      */
-    public long updateLastAttackTimeAndGetInterval(int skillId, long currentTimeMillis) {
-        AtomicLong intervalMillis = new AtomicLong(Long.MAX_VALUE);
-        lastAttackTimes.compute(skillId, (ignored, previousTime) -> {
-            long previous = previousTime == null ? 0L : previousTime;
-            if (previous > 0L && currentTimeMillis > previous) {
-                intervalMillis.set(currentTimeMillis - previous);
+    public long getAttackInterval(int skillId, long now) {
+        AtomicLong intervalRef = new AtomicLong(Long.MAX_VALUE);
+        normalAttackTimes.compute(skillId, (ignored, prevTime) -> {
+            long prev = prevTime != null ? prevTime : 0L;
+            if (prev > 0L && now > prev) {
+                intervalRef.set(now - prev);
             }
-            // 保证每个技能的时间记录单调不回退，避免并发写入覆盖新值。
-            return Math.max(previous, currentTimeMillis);
+            long interval = intervalRef.get();
+            if (interval != Long.MAX_VALUE && interval < MIN_INTERVAL) {
+                return prev;
+            }
+            return Math.max(prev, now);
         });
-        return intervalMillis.get();
+        return intervalRef.get();
     }
 
 
@@ -549,6 +555,12 @@ public class Character extends AbstractCharacterObject {
 
     public Job getJobStyle(byte opt) {
         return Job.getJobStyleInternal(this.getJob().getId(), opt);
+    }
+
+    public void setHair(int hair) {
+        int oldHair = this.hair;
+        this.hair = hair;
+        DynamicHairMedal.onHairChanged(this, oldHair, hair);
     }
 
     public Job getJobStyle() {
@@ -1999,9 +2011,20 @@ public class Character extends AbstractCharacterObject {
         }
 
         if (ob instanceof MapItem mapitem) {
-            if (System.currentTimeMillis() - mapitem.getDropTime() < 400 || !mapitem.canBePickedBy(this)) {
+            if (System.currentTimeMillis() - mapitem.getDropTime() < 400) {
                 enableActions();
                 return;
+            }
+
+            // canBePickedBy 读/写 owner 字段,必须持 itemLock
+            mapitem.lockItem();
+            try {
+                if (!mapitem.canBePickedBy(this)) {
+                    enableActions();
+                    return;
+                }
+            } finally {
+                mapitem.unlockItem();
             }
 
             List<Character> mpcs = new LinkedList<>();
@@ -2416,7 +2439,7 @@ public class Character extends AbstractCharacterObject {
         try {
             Server.getInstance().disbandGuild(guildId);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error(I18nUtil.getLogMessage("Character.disbandGuild.error1"), id, name, guildId, e);
         }
     }
 
@@ -3092,6 +3115,55 @@ public class Character extends AbstractCharacterObject {
         } else {
             enableActions();
         }
+    }
+
+    /**
+     * 将金币扣除与调用方的数据库事务绑定。
+     * 角色保存与其他金币变更在事务完成前都会等待，
+     * 只有持久化成功后才发布新的内存余额。
+     *
+     * @param cost        需要扣除的正整数金币
+     * @param persistence 接收扣费后余额，并在同一事务中持久化业务与金币
+     * @return 事务和内存扣费是否均成功
+     */
+    public synchronized boolean spendMesoTransactionally(int cost, IntPredicate persistence) {
+        if (cost <= 0) {
+            return false;
+        }
+
+        int balanceAfter;
+        petLock.lock();
+        try {
+            int currentBalance = meso.get();
+            if (currentBalance < cost) {
+                return false;
+            }
+
+            balanceAfter = currentBalance - cost;
+            boolean persisted;
+            try {
+                persisted = persistence.test(balanceAfter);
+            } catch (RuntimeException e) {
+                log.error(I18nUtil.getLogMessage("Character.spendMesoTransactionally.error1"),
+                        id, cost, e);
+                return false;
+            }
+            if (!persisted) {
+                return false;
+            }
+            meso.set(balanceAfter);
+        } finally {
+            petLock.unlock();
+        }
+
+        try {
+            updateSingleStat(Stat.MESO, balanceAfter, false);
+            sendPacket(PacketCreator.getShowMesoGain(-cost, true));
+        } catch (RuntimeException e) {
+            log.error(I18nUtil.getLogMessage("Character.spendMesoTransactionally.error2"),
+                    id, cost, e);
+        }
+        return true;
     }
 
     public void genericGuildMessage(int code) {
@@ -4329,8 +4401,10 @@ public class Character extends AbstractCharacterObject {
     }
 
     public List<Ring> getCrushRings() {
-        Collections.sort(crushRings);
-        return crushRings;
+        synchronized (crushRings) {
+            Collections.sort(crushRings);
+            return new ArrayList<>(crushRings);
+        }
     }
 
     public Collection<Door> getDoors() {
@@ -4708,8 +4782,10 @@ public class Character extends AbstractCharacterObject {
     }
 
     public List<Ring> getFriendshipRings() {
-        Collections.sort(friendshipRings);
-        return friendshipRings;
+        synchronized (friendshipRings) {
+            Collections.sort(friendshipRings);
+            return new ArrayList<>(friendshipRings);
+        }
     }
 
     public boolean isMale() {
@@ -5169,6 +5245,11 @@ public class Character extends AbstractCharacterObject {
     public void closeHiredMerchant(boolean closeMerchant) {
         HiredMerchant merchant = this.getHiredMerchant();
         if (merchant == null) {
+            return;
+        }
+
+        if (merchant.isOwner(this) && !merchant.isPublished()) {
+            merchant.closeOwnerMerchant(this);
             return;
         }
 
@@ -6242,9 +6323,13 @@ public class Character extends AbstractCharacterObject {
         if (ItemId.isWeddingRing(ringItemId)) {
             this.marriageRing = ring;
         } else if (ring.getItemId() > 1112012) {
-            this.friendshipRings.add(ring);
+            synchronized (friendshipRings) {
+                this.friendshipRings.add(ring);
+            }
         } else {
-            this.crushRings.add(ring);
+            synchronized (crushRings) {
+                this.crushRings.add(ring);
+            }
         }
     }
 
@@ -7119,15 +7204,12 @@ public class Character extends AbstractCharacterObject {
     }
 
     public void receivePartyMemberHP() {
-        prtLock.lock();
-        try {
-            if (party != null) {
-                for (Character partychar : this.getPartyMembersOnSameMap()) {
-                    sendPacket(PacketCreator.updatePartyMemberHP(partychar.getId(), partychar.getHp(), partychar.getCurrentMaxHp()));
-                }
-            }
-        } finally {
-            prtLock.unlock();
+        // 不在此处包一层 prtLock:getPartyMembersOnSameMap 内部已持 prtLock 保护 party 引用。
+        // 若再包一层,会在持 prtLock 的同时对同图队友逐个取 getHp()(对方 statRlock),
+        // 与 updateLocalStats(本角色 statWlock 后再 updatePartyMemberHP 取 prtLock)形成
+        // 跨角色反向锁顺序,存在死锁窗口。
+        for (Character partychar : this.getPartyMembersOnSameMap()) {
+            sendPacket(PacketCreator.updatePartyMemberHP(partychar.getId(), partychar.getHp(), partychar.getCurrentMaxHp()));
         }
     }
 
@@ -7818,17 +7900,17 @@ public class Character extends AbstractCharacterObject {
                 }
 
                 // Event stats
-                deleteWhereCharacterId(con, "DELETE FROM eventstats WHERE characterid = ?");
-                try (PreparedStatement psEvent = con.prepareStatement("INSERT INTO eventstats (characterid, name, info) VALUES (?, ?, ?)")) {
-                    psEvent.setInt(1, id);
-
-                    for (Map.Entry<String, Events> entry : events.entrySet()) {
-                        psEvent.setString(2, entry.getKey());
-                        psEvent.setInt(3, entry.getValue().getInfo());
-                        psEvent.addBatch();
+                if (events != null) {
+                    deleteWhereCharacterId(con, "DELETE FROM eventstats WHERE characterid = ?");
+                    try (PreparedStatement psEvent = con.prepareStatement("INSERT INTO eventstats (characterid, name, info) VALUES (?, ?, ?)")) {
+                        psEvent.setInt(1, id);
+                        for (Map.Entry<String, Events> entry : events.entrySet()) {
+                            psEvent.setString(2, entry.getKey());
+                            psEvent.setInt(3, entry.getValue().getInfo());
+                            psEvent.addBatch();
+                        }
+                        psEvent.executeBatch();
                     }
-
-                    psEvent.executeBatch();
                 }
 
                 deleteQuestProgressWhereCharacterId(con, id);
@@ -9130,6 +9212,30 @@ public class Character extends AbstractCharacterObject {
     }
 
     /**
+     * 记录传送前玩家坐标，供宠物拾取反作弊旧位置物品补偿使用。
+     * 每次内传送门触发时由 InnerPortalHandler 调用。
+     */
+    public void setPetLootTeleportBeforePos(Point pos) {
+        this.petLootTeleportBeforePos = pos;
+        this.petLootTeleportBeforePosTime = monotonicNow();
+    }
+
+    /**
+     * 获取宠物拾取补偿用的传送前坐标。
+     * 1.5s 内有效，超时自动失效，避免旧坐标残留下一次捡包误判。
+     */
+    public Point getPetLootTeleportBeforePos() {
+        if (petLootTeleportBeforePos == null) {
+            return null;
+        }
+        if (monotonicNow() - petLootTeleportBeforePosTime > PET_LOOT_TELEPORT_CONTEXT_EXPIRE_NS) {
+            petLootTeleportBeforePos = null;
+            return null;
+        }
+        return new Point(petLootTeleportBeforePos);
+    }
+
+    /**
      * 消费一次传送距离保护校验次数（按攻击包维度消费）。
      */
     public synchronized void consumeTeleportDistanceCheckContext() {
@@ -9990,5 +10096,107 @@ public class Character extends AbstractCharacterObject {
      */
     public void enableActions() {
         sendPacket(PacketCreator.enableActions());
+    }
+
+    // ==================== 攻击间隔滑动窗口（稳定度识别） ====================
+
+    /** 窗口大小：最近 N 次攻击间隔 */
+    public static final int WINDOW_SIZE = 10;
+    /** 变异系数阈值：CV < 此值判定为稳定高速 */
+    public static final double STABLE_CV = 0.3;
+    /** 网络抖动透明上限：< 此值的间隔不更新状态、不入窗口 */
+    public static final long MIN_INTERVAL = 50;
+    /** 平均阈值：窗口 avg >= 此值判定为正常频率 */
+    public static final long NORMAL_AVG = 250;
+    /** 窗口自动过期时间：60s 无写入自动重置 */
+    private static final long CLEANUP_MS = 60_000;
+
+    /** 各技能攻击间隔滑动窗口 */
+    private final ConcurrentHashMap<Integer, AttackWindow> skillWindows = new ConcurrentHashMap<>();
+
+    /** 全局最后攻击时间戳，只被正常主动技能更新 */
+    private volatile long globalAttackTime;
+
+    /** 滑动窗口判定结果 */
+    public enum SkillWindowResult {
+        PASS,          // 数据不足 / avg >= 250 → 正常
+        STABLE_HACK,   // avg < 250 且 CV < STABLE_CV → 稳定高速
+        BURST          // avg < 250 但 CV >= STABLE_CV → 网络暴发
+    }
+
+    /** 环形缓冲，保存最近 N 次攻击间隔，满后自动计算 avg + CV */
+    static final class AttackWindow {
+        private final long[] buf = new long[WINDOW_SIZE];
+        private int idx;
+        private int count;
+        private long lastPush;
+
+        AttackWindow() {
+            this.lastPush = System.currentTimeMillis();
+        }
+
+        synchronized void push(long interval) {
+            long now = System.currentTimeMillis();
+            if (now - lastPush > CLEANUP_MS) {
+                idx = 0;
+                count = 0;
+            }
+            buf[idx] = interval;
+            idx = (idx + 1) % WINDOW_SIZE;
+            if (count < WINDOW_SIZE) count++;
+            lastPush = now;
+        }
+
+        synchronized boolean isFull() {
+            return count == WINDOW_SIZE;
+        }
+
+        synchronized double avg() {
+            long sum = 0;
+            for (int i = 0; i < count; i++) sum += buf[i];
+            return (double) sum / count;
+        }
+
+        synchronized double stddev() {
+            double a = avg();
+            double sumSq = 0;
+            for (int i = 0; i < count; i++) {
+                double d = buf[i] - a;
+                sumSq += d * d;
+            }
+            return Math.sqrt(sumSq / count);
+        }
+    }
+
+    /**
+     * 推入间隔到滑动窗口，返回窗口判定结果。
+     * 窗口不满或 avg >= 250 返回 PASS；
+     * avg < 250 且 CV < STABLE_CV 返回 STABLE_HACK；
+     * avg < 250 但 CV >= STABLE_CV 返回 BURST。
+     */
+    public SkillWindowResult checkSkillWindow(int skillId, long interval) {
+        AttackWindow w = skillWindows.computeIfAbsent(skillId, k -> new AttackWindow());
+        w.push(interval);
+        if (!w.isFull()) return SkillWindowResult.PASS;
+        double avg = w.avg();
+        if (avg >= NORMAL_AVG) return SkillWindowResult.PASS;
+        double cv = w.stddev() / avg;
+        return cv < STABLE_CV ? SkillWindowResult.STABLE_HACK : SkillWindowResult.BURST;
+    }
+
+    /** 获取指定技能的滑动窗口（外部只读 avg / isFull），无则返回 null */
+    public AttackWindow getSkillWindow(int skillId) {
+        return skillWindows.get(skillId);
+    }
+
+    /** 获取全局攻击间隔。首次或未设时返回 Long.MAX_VALUE */
+    public long getGlobalInterval(long now) {
+        long last = globalAttackTime;
+        return last == 0 ? Long.MAX_VALUE : now - last;
+    }
+
+    /** 更新全局攻击时间戳，只被正常主动技能调用 */
+    public void updateGlobalTime(long now) {
+        globalAttackTime = now;
     }
 }

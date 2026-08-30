@@ -70,6 +70,7 @@ import org.gms.server.partyquest.MonsterCarnival;
 import org.gms.server.partyquest.Pyramid;
 import org.gms.server.partyquest.Pyramid.PyramidMode;
 import org.gms.util.PacketCreator;
+import org.gms.util.I18nUtil;
 
 import java.awt.*;
 import java.sql.SQLException;
@@ -464,26 +465,37 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
     //     }
     // }
 
-    public void upgradeAlliance() {
-        Alliance alliance = Server.getInstance().getAlliance(c.getPlayer().getGuild().getAllianceId());
-        alliance.increaseCapacity(1);
+    public boolean upgradeAlliance(int cost, int maxCapacity) {
+        Guild guild = c.getPlayer().getGuild();
+        if (guild == null) {
+            return false;
+        }
+        Alliance alliance = Server.getInstance().getAlliance(guild.getAllianceId());
+        if (alliance == null || !alliance.purchaseCapacity(c.getPlayer(), cost, maxCapacity)) {
+            return false;
+        }
 
-        Server.getInstance().allianceMessage(alliance.getId(), GuildPackets.getGuildAlliances(alliance, c.getWorld()), -1, -1);
-        Server.getInstance().allianceMessage(alliance.getId(), GuildPackets.allianceNotice(alliance.getId(), alliance.getNotice()), -1, -1);
-
-        c.sendPacket(GuildPackets.updateAllianceInfo(alliance, c.getWorld()));  // thanks Vcoc for finding an alliance update to leader issue
+        try {
+            Server.getInstance().allianceMessage(alliance.getId(), GuildPackets.getGuildAlliances(alliance, c.getWorld()), -1, -1);
+            Server.getInstance().allianceMessage(alliance.getId(), GuildPackets.allianceNotice(alliance.getId(), alliance.getNotice()), -1, -1);
+            c.sendPacket(GuildPackets.updateAllianceInfo(alliance, c.getWorld()));
+        } catch (RuntimeException e) {
+            log.error(I18nUtil.getLogMessage("NPCConversationManager.alliance.error1"),
+                    alliance.getId(), e);
+        }
+        return true;
     }
 
-    public void disbandAlliance(Client c, int allianceId) {
-        Alliance.disbandAlliance(allianceId);
+    public boolean disbandAlliance(int allianceId) {
+        return Alliance.disbandAlliance(allianceId);
     }
 
     public boolean canBeUsedAllianceName(String name) {
         return Alliance.canBeUsedAllianceName(name);
     }
 
-    public Alliance createAlliance(String name) {
-        return Alliance.createAlliance(getParty(), name);
+    public Alliance createAlliance(String name, int cost) {
+        return Alliance.createAlliance(getParty(), name, cost);
     }
 
     public int getAllianceCapacity() {
@@ -545,33 +557,41 @@ public class NPCConversationManager extends AbstractPlayerInteraction {
         Party partyz = getPlayer().getParty();
         MapManager mapManager = c.getChannelServer().getMapFactory();
 
-        MapleMap map = null;
         int mapid = MapId.NETTS_PYRAMID_SOLO_BASE;
         if (party) {
             mapid += 10000;
         }
         mapid += (mod.getMode() * 1000);
 
-        for (byte b = 0; b < 5; b++) {//They cannot warp to the next map before the timer ends (:
-            map = mapManager.getMap(mapid + b);
-            if (map.getCharacters().isEmpty()) {
-                return false;
+        MapleMap map = null;
+        for (byte room = 0; room < 5; room++) {
+            boolean roomAvailable = true;
+            for (byte stage = 0; stage < 5; stage++) {
+                if (!mapManager.getMap(mapid + room + (stage * 100)).getCharacters().isEmpty()) {
+                    roomAvailable = false;
+                    break;
+                }
             }
+            if (roomAvailable) {
+                mapid += room;
+                map = mapManager.getMap(mapid);
+                break;
+            }
+        }
+        if (map == null) {
+            return false;
         }
 
         if (!party) {
-            // 修复单人组队金字塔空指针的问题
             PartyCharacter single = new PartyCharacter(getPlayer());
             partyz = new Party(-1, single);
             partyz.addMember(single);
         }
         Pyramid py = new Pyramid(partyz, mod, map.getId());
-        getPlayer().setPartyQuest(py);
         py.warp(mapid);
         dispose();
         return true;
     }
-
     public boolean itemExists(int itemid) {
         return ItemInformationProvider.getInstance().getName(itemid) != null;
     }

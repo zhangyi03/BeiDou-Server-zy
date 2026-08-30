@@ -57,6 +57,7 @@ import org.gms.constants.id.ItemId;
 import org.gms.constants.id.MapId;
 import org.gms.constants.id.NpcId;
 import org.gms.constants.inventory.ItemConstants;
+import org.gms.constants.string.CharsetConstants;
 import org.gms.constants.skills.Buccaneer;
 import org.gms.constants.skills.Corsair;
 import org.gms.constants.skills.ThunderBreaker;
@@ -5414,7 +5415,7 @@ public class PacketCreator {
 
     public static Packet givePirateBuff(List<Pair<BuffStat, Integer>> statups, int buffid, int duration) {
         OutPacket p = OutPacket.create(SendOpcode.GIVE_BUFF);
-        boolean infusion = buffid == Buccaneer.SPEED_INFUSION || buffid == ThunderBreaker.SPEED_INFUSION || buffid == Corsair.SPEED_INFUSION;
+        boolean infusion = buffid == Buccaneer.SPEED_INFUSION || buffid == ThunderBreaker.SPEED_INFUSION || buffid == Corsair.HEROS_WILL;
         writeLongMask(p, statups);
         p.writeShort(0);
         for (Pair<BuffStat, Integer> stat : statups) {
@@ -5429,7 +5430,7 @@ public class PacketCreator {
 
     public static Packet giveForeignPirateBuff(int cid, int buffid, int time, List<Pair<BuffStat, Integer>> statups) {
         OutPacket p = OutPacket.create(SendOpcode.GIVE_FOREIGN_BUFF);
-        boolean infusion = buffid == Buccaneer.SPEED_INFUSION || buffid == ThunderBreaker.SPEED_INFUSION || buffid == Corsair.SPEED_INFUSION;
+        boolean infusion = buffid == Buccaneer.SPEED_INFUSION || buffid == ThunderBreaker.SPEED_INFUSION || buffid == Corsair.HEROS_WILL;
         p.writeInt(cid);
         writeLongMask(p, statups);
         p.writeShort(0);
@@ -7437,7 +7438,13 @@ public class PacketCreator {
         scriptableNpcIds.forEach((id, name) -> {
             p.writeInt(id);
             // The client needs a name for the npc conversation, which is displayed under etc when the npc has a quest available.
-            p.writeString(name);
+            if (CharsetConstants.isZhCN()) {
+                byte[] bytes = name.getBytes(CharsetConstants.getCharset(3));
+                p.writeShort(bytes.length);
+                p.writeBytes(bytes);
+            } else {
+                p.writeString(name);
+            }
             p.writeInt(0); // start time
             p.writeInt(Integer.MAX_VALUE); // end time
         });
