@@ -3462,6 +3462,8 @@ public class Character extends AbstractCharacterObject {
 
     public void cancelAllBuffs(boolean softcancel) {
         if (softcancel) {
+            // cancelEffectFromBuffStat 会重入 cancelEffect，外层也须按 prtLock -> effLock -> chrLock 取锁。
+            prtLock.lock();
             effLock.lock();
             chrLock.lock();
             try {
@@ -3477,6 +3479,7 @@ public class Character extends AbstractCharacterObject {
             } finally {
                 chrLock.unlock();
                 effLock.unlock();
+                prtLock.unlock();
             }
         } else {
             Map<StatEffect, Long> mseBuffs = new LinkedHashMap<>();
@@ -3656,31 +3659,38 @@ public class Character extends AbstractCharacterObject {
     }
 
     public void updateActiveEffects() {
-        effLock.lock();     // thanks davidlafriniere, maple006, RedHat for pointing a deadlock occurring here
+        // isUpdatingEffect -> StatEffect.isActive 会读取同图队友，必须与 cancelEffect、
+        // updateLocalStats 保持 prtLock -> effLock 顺序，避免切图与技能处理互相等待。
+        prtLock.lock();
         try {
-            Set<BuffStat> updatedBuffs = new LinkedHashSet<>();
-            Set<StatEffect> activeEffects = new LinkedHashSet<>();
+            effLock.lock();
+            try {
+                Set<BuffStat> updatedBuffs = new LinkedHashSet<>();
+                Set<StatEffect> activeEffects = new LinkedHashSet<>();
 
-            for (BuffStatValueHolder mse : effects.values()) {
-                activeEffects.add(mse.effect);
-            }
+                for (BuffStatValueHolder mse : effects.values()) {
+                    activeEffects.add(mse.effect);
+                }
 
-            for (Map<BuffStat, BuffStatValueHolder> buff : buffEffects.values()) {
-                StatEffect mse = getEffectFromBuffSource(buff);
-                if (isUpdatingEffect(activeEffects, mse)) {
-                    for (Pair<BuffStat, Integer> p : mse.getStatups()) {
-                        updatedBuffs.add(p.getLeft());
+                for (Map<BuffStat, BuffStatValueHolder> buff : buffEffects.values()) {
+                    StatEffect mse = getEffectFromBuffSource(buff);
+                    if (isUpdatingEffect(activeEffects, mse)) {
+                        for (Pair<BuffStat, Integer> p : mse.getStatups()) {
+                            updatedBuffs.add(p.getLeft());
+                        }
                     }
                 }
-            }
 
-            for (BuffStat mbs : updatedBuffs) {
-                effects.remove(mbs);
-            }
+                for (BuffStat mbs : updatedBuffs) {
+                    effects.remove(mbs);
+                }
 
-            updateEffects(updatedBuffs);
+                updateEffects(updatedBuffs);
+            } finally {
+                effLock.unlock();
+            }
         } finally {
-            effLock.unlock();
+            prtLock.unlock();
         }
     }
 
@@ -3767,6 +3777,8 @@ public class Character extends AbstractCharacterObject {
     }
 
     public void cancelBuffStats(BuffStat stat) {
+        // dropBuffStats 选择备用效果时会读取同图队友，与 cancelEffect 保持相同取锁顺序。
+        prtLock.lock();
         effLock.lock();
         try {
             List<Pair<Integer, BuffStatValueHolder>> cancelList = new LinkedList<>();
@@ -3791,6 +3803,7 @@ public class Character extends AbstractCharacterObject {
             }
         } finally {
             effLock.unlock();
+            prtLock.unlock();
         }
 
         cancelPlayerBuffs(Collections.singletonList(stat));
@@ -5248,6 +5261,12 @@ public class Character extends AbstractCharacterObject {
             return;
         }
 
+        if (merchant.isClosedForBan()) {
+            merchant.closeForBan();
+            this.setHiredMerchant(null);
+            return;
+        }
+
         if (merchant.isOwner(this) && !merchant.isPublished()) {
             merchant.closeOwnerMerchant(this);
             return;
@@ -5262,7 +5281,10 @@ public class Character extends AbstractCharacterObject {
             }
         } else {
             if (merchant.isOwner(this)) {
-                merchant.setOpen(true);
+                if (!merchant.setOpen(true)) {
+                    merchant.closeForBan();
+                    return;
+                }
             } else {
                 merchant.removeVisitor(this);
             }
@@ -5620,8 +5642,9 @@ public class Character extends AbstractCharacterObject {
             sendPacket(PacketCreator.giveBuff(energyBar, 0, stat));
             sendPacket(PacketCreator.showOwnBuffEffect(energycharge.getId(), 2));
             getMap().broadcastPacket(this, PacketCreator.showBuffEffect(id, energycharge.getId(), 2));
+            // 海盗状态封包的时长单位为秒，StatEffect 内部使用毫秒。
             getMap().broadcastPacket(this, PacketCreator.giveForeignPirateBuff(id, energycharge.getId(),
-                    ceffect.getDuration(), stat));
+                    ceffect.getDuration() / 1000, stat));
         }
         if (energyBar >= 10000 && energyBar < 11000) {
             energyBar = 15000;
@@ -7934,7 +7957,7 @@ public class Character extends AbstractCharacterObject {
                             rs.next();
                             for (int mob : qs.getProgress().keySet()) {
                                 psProgress.setInt(1, id);
-                                psProgress.setInt(2, rs.getInt(1));
+                                psProgress.setLong(2, rs.getLong(1));
                                 psProgress.setInt(3, mob);
                                 psProgress.setString(4, qs.getProgress(mob));
                                 psProgress.addBatch();
@@ -7943,7 +7966,7 @@ public class Character extends AbstractCharacterObject {
 
                             for (int i = 0; i < qs.getMedalMaps().size(); i++) {
                                 psMedal.setInt(1, id);
-                                psMedal.setInt(2, rs.getInt(1));
+                                psMedal.setLong(2, rs.getLong(1));
                                 psMedal.setInt(3, qs.getMedalMaps().get(i));
                                 psMedal.addBatch();
                             }

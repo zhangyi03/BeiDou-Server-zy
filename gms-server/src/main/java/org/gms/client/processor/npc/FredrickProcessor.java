@@ -304,7 +304,8 @@ public class FredrickProcessor {
                     if (deleteFredrickItems(chr.getId())) {
                         HiredMerchant merchant = chr.getHiredMerchant();
 
-                        if (merchant != null) {
+                        // 当前关联也可能是正在访问的其他玩家商店，只清理领取者自己的货架。
+                        if (merchant != null && merchant.isOwner(chr)) {
                             merchant.clearItems();
                         }
 
