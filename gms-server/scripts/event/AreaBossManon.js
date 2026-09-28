@@ -21,7 +21,7 @@
 */
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Faust2 Spawner
+ Manon Spawner
  -- Edited by --------------------------------------------------------------------------------------
  ThreeStep - based on xQuasar's King Clang spawner
 
@@ -42,21 +42,23 @@ function cancelSchedule() {
 }
 
 function start() {
+    var manonsForest = em.getChannelServer().getMapFactory().getMap(240020401);
     const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
-    var theForestOfEvil2 = em.getChannelServer().getMapFactory().getMap(100040106);
-    var faust2 = LifeFactory.getMonster(5220002);
+    var manonsForestMob = LifeFactory.getMonster(8180000);
 
-    if (theForestOfEvil2.getMonsterById(5220002) != null) {
+    if (manonsForest.getMonsterById(8180000) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
+    var posX = -7;
+    var posY = 0;
     const Point = Java.type('java.awt.Point');
-    const spawnpoint = new Point(474, 278);
-    theForestOfEvil2.spawnMonsterOnGroundBelow(faust2, spawnpoint);
+    const spawnpoint = new Point(posX, posY);
+    manonsForest.spawnMonsterOnGroundBelow(manonsForestMob, spawnpoint);
 
     const PacketCreator = Java.type('org.gms.util.PacketCreator');
-    theForestOfEvil2.broadcastMessage(PacketCreator.serverNotice(6, "Faust appeared amidst the blue fog."));
+    manonsForest.broadcastMessage(PacketCreator.serverNotice(6, "Manon has appeared in Manon's Forest, trailing fire across the sky."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 

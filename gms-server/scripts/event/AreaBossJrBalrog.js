@@ -21,7 +21,10 @@
 */
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Door boss Spawner (based on xQuasar's King Clang spawner)
+ Jr. Balrog Spawner
+ -- Edited by --------------------------------------------------------------------------------------
+ ThreeStep - based on xQuasar's King Clang spawner
+
  **/
 
 function init() {
@@ -39,25 +42,23 @@ function cancelSchedule() {
 }
 
 function start() {
-    var bossMobid = 9400633;
-    var bossMapid = 677000012;
-    var bossMsg = "Astaroth has appeared!";
+    var cursedSanctuary = em.getChannelServer().getMapFactory().getMap(105090900);
+    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
+    var cursedSanctuaryMob = LifeFactory.getMonster(8130100);
 
-    var map = em.getChannelServer().getMapFactory().getMap(bossMapid);
-    if (map.getMonsterById(bossMobid) != null) {
+    if (cursedSanctuary.getMonsterById(8130100) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
-    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
+    var posX = 113;
+    var posY = 0;
     const Point = Java.type('java.awt.Point');
+    const spawnpoint = new Point(posX, posY);
+    cursedSanctuary.spawnMonsterOnGroundBelow(cursedSanctuaryMob, spawnpoint);
+
     const PacketCreator = Java.type('org.gms.util.PacketCreator');
-
-    var boss = LifeFactory.getMonster(bossMobid);
-    var bossPos = new Point(842, 0);
-    map.spawnMonsterOnGroundBelow(boss, bossPos);
-    map.broadcastMessage(PacketCreator.serverNotice(6, bossMsg));
-
+    cursedSanctuary.broadcastMessage(PacketCreator.serverNotice(6, "Jr. Balrog has appeared in the Cursed Sanctuary, wings beating in the dark."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 

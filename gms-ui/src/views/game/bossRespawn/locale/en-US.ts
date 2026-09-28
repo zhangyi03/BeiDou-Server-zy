@@ -1,0 +1,30 @@
+export default {
+  'bossRespawn.tips':
+    'Spawn interval is the base value; effective interval = interval x global respawn rate. Saving rebuilds the schedule immediately and restarts the countdown with the new interval (the boss is not respawned right away). If you edit the DB with SQL directly, it is picked up automatically within 1 minute.',
+  'bossRespawn.placeholder.filter': 'Filter by script name / BossID / MapID',
+  'bossRespawn.button.reload': 'Reload Now',
+  'bossRespawn.reload.success': 'Config reloaded and schedules rebuilt',
+  'bossRespawn.timeRate': 'Global Respawn Rate',
+  'bossRespawn.total': '{total} bosses in total',
+  'bossRespawn.column.eventName': 'Event Script',
+  'bossRespawn.column.boss': 'Boss',
+  'bossRespawn.column.mapId': 'Map',
+  'bossRespawn.column.bossName': 'Alias',
+  'bossRespawn.column.spawnInterval': 'Spawn Interval (min)',
+  'bossRespawn.column.effectiveMinutes': 'Effective (min)',
+  'bossRespawn.column.point': 'Spawn Point X / Y',
+  'bossRespawn.column.notice': 'Spawn Notice',
+  'bossRespawn.column.enabled': 'Enabled',
+  'bossRespawn.bossName.placeholder': 'Empty uses mob name',
+  'bossRespawn.point.placeholder': 'Default',
+  'bossRespawn.notice.placeholder': 'Empty uses script default',
+  'bossRespawn.scriptDefault': 'Script Default',
+  'bossRespawn.save.success': 'Saved, schedules rebuilt',
+  'bossRespawn.reset.button': 'Reset',
+  'bossRespawn.reset.tips':
+    'This removes the override config for this boss and falls back to the script default. Continue?',
+  'bossRespawn.reset.success': 'Reset to script default',
+  'bossRespawn.validate.intervalRequired': 'Spawn interval is required',
+  'bossRespawn.validate.pointPair':
+    'Spawn point X and Y must be filled together or left empty together',
+};

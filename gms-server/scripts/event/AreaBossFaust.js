@@ -21,13 +21,11 @@
 */
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Eliza1 Spawner
+ Faust Spawner
  -- Edited by --------------------------------------------------------------------------------------
  ThreeStep - based on xQuasar's King Clang spawner
 
  **/
-
-var setupTask;
 
 function init() {
     scheduleNew();
@@ -45,19 +43,20 @@ function cancelSchedule() {
 
 function start() {
     const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
-    var eliza = LifeFactory.getMonster(8220000);
-    var stairwayToTheSky2 = em.getChannelServer().getMapFactory().getMap(200010300);
+    var theForestOfEvil2 = em.getChannelServer().getMapFactory().getMap(100040106);
+    var faust2 = LifeFactory.getMonster(5220002);
 
-    if (stairwayToTheSky2.getMonsterById(8220000) != null) {
+    if (theForestOfEvil2.getMonsterById(5220002) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
-    const PacketCreator = Java.type('org.gms.util.PacketCreator');
     const Point = Java.type('java.awt.Point');
-    const spawnpoint = new Point(208, 83);
-    stairwayToTheSky2.spawnMonsterOnGroundBelow(eliza, spawnpoint);
-    stairwayToTheSky2.broadcastMessage(PacketCreator.serverNotice(6, "Eliza has appeared with a black whirlwind."));
+    const spawnpoint = new Point(474, 278);
+    theForestOfEvil2.spawnMonsterOnGroundBelow(faust2, spawnpoint);
+
+    const PacketCreator = Java.type('org.gms.util.PacketCreator');
+    theForestOfEvil2.broadcastMessage(PacketCreator.serverNotice(6, "Faust appeared amidst the blue fog."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 

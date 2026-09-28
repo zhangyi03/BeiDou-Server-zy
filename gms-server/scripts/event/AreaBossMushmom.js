@@ -21,7 +21,7 @@
 */
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Timer2 Spawner
+ Mushmom Spawner
  -- Edited by --------------------------------------------------------------------------------------
  ThreeStep - based on xQuasar's King Clang spawner
 
@@ -42,24 +42,23 @@ function cancelSchedule() {
 }
 
 function start() {
-    var lostTime1 = em.getChannelServer().getMapFactory().getMap(220050000);
+    var mushroomPark3 = em.getChannelServer().getMapFactory().getMap(100000005);
     const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
-    var timer2 = LifeFactory.getMonster(5220003);
+    var mushroomPark3Mob = LifeFactory.getMonster(6130101);
 
-    if (lostTime1.getMonsterById(5220003) != null) {
+    if (mushroomPark3.getMonsterById(6130101) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
-    var posX;
-    var posY = 1030;
-    posX = Math.floor((Math.random() * 1400) - 1000);
+    var posX = -649;
+    var posY = 0;
     const Point = Java.type('java.awt.Point');
     const spawnpoint = new Point(posX, posY);
-    lostTime1.spawnMonsterOnGroundBelow(timer2, spawnpoint);
+    mushroomPark3.spawnMonsterOnGroundBelow(mushroomPark3Mob, spawnpoint);
 
     const PacketCreator = Java.type('org.gms.util.PacketCreator');
-    lostTime1.broadcastMessage(PacketCreator.serverNotice(6, "Tick-Tock Tick-Tock! Timer makes it's presence known."));
+    mushroomPark3.broadcastMessage(PacketCreator.serverNotice(6, "Mushmom has appeared, its giant cap bursting through the fallen leaves."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 

@@ -556,19 +556,6 @@
     </imgdir>
   </imgdir>
   <imgdir name="life">
-    <imgdir name="0">
-      <string name="type" value="m"/>
-      <string name="id" value="8220001"/>
-      <int name="x" value="356"/>
-      <int name="y" value="262"/>
-      <int name="mobTime" value="600"/>
-      <int name="f" value="0"/>
-      <int name="hide" value="0"/>
-      <int name="fh" value="11"/>
-      <int name="cy" value="274"/>
-      <int name="rx0" value="-340"/>
-      <int name="rx1" value="610"/>
-    </imgdir>
     <imgdir name="1">
       <string name="type" value="m"/>
       <string name="id" value="6300000"/>

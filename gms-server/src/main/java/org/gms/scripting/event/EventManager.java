@@ -22,8 +22,10 @@
 package org.gms.scripting.event;
 
 import org.gms.client.Character;
+import org.gms.config.BossRespawnConfigCache;
 import org.gms.config.GameConfig;
 import org.gms.constants.game.GameConstants;
+import org.gms.dao.entity.BossRespawnConfigDO;
 import org.gms.net.server.Server;
 import org.gms.net.server.channel.Channel;
 import org.gms.net.server.guild.Guild;
@@ -1256,6 +1258,20 @@ public class EventManager {
     public int getBossTime(int BossTime) {
         return (int) (BossTime * GameConfig.getServerFloat("boss_respawn_mob_time_rate"));
     }
+
+    /**
+     * 获取当前事件脚本对应的Boss刷新配置（数据库覆盖项）。
+     * <p>
+     * 键取脚本名 {@link #getName()}，与 boss_respawn_config.event_name 一一对应，
+     * 因此同一个 bossId 被多个脚本共用（如提莫的 Timer1/2/3）时也能各配各的。
+     * 返回 null 表示无配置，脚本应回落到自身常量。
+     *
+     * @return Boss刷新配置，无配置返回 null
+     */
+    public BossRespawnConfigDO getBossRespawnConfig() {
+        return BossRespawnConfigCache.get(getName());
+    }
+
     /**
      * 填充EIM队列
      */
@@ -1330,5 +1346,24 @@ public class EventManager {
 
     public Long getNextScheduledTime() {
         return nextScheduledTime;
+    }
+
+    /**
+     * 清空该事件当前全部待执行排期，并作废在途的旧登记。
+     * <p>
+     * 脚本自带的 {@code cancelSchedule()} 只能取消"最近一次登记"的那一个任务；
+     * 一旦历史上出现过孤儿条目（例如重建排期与正在执行的排期任务交叉），
+     * 就再也取消不掉，同一事件会并行跑多条定时链，表现为"改了间隔却仍按旧节奏刷新"。
+     * 重建排期请使用本方法。
+     */
+    public void cancelAllSchedules() {
+        ess.clearEntries();
+    }
+
+    /**
+     * 当前待执行的排期条数，仅用于诊断（判断是否存在孤儿排期）
+     */
+    public int getPendingScheduleCount() {
+        return ess.pendingCount();
     }
 }

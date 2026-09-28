@@ -21,9 +21,10 @@
 */
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Timer1 Spawner
+ Female Boss Spawner
  -- Edited by --------------------------------------------------------------------------------------
  ThreeStep - based on xQuasar's King Clang spawner
+
  **/
 
 function init() {
@@ -41,24 +42,23 @@ function cancelSchedule() {
 }
 
 function start() {
-    var whirlpoolOfTime = em.getChannelServer().getMapFactory().getMap(220050100);
+    var parlor = em.getChannelServer().getMapFactory().getMap(801040003);
     const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
-    var timer1 = LifeFactory.getMonster(5220003);
+    var parlorMob = LifeFactory.getMonster(9400121);
 
-    if (whirlpoolOfTime.getMonsterById(5220003) != null) {
+    if (parlor.getMonsterById(9400121) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
-    var posX;
-    var posY = 1030;
-    posX = Math.floor((Math.random() * 770) - 770);
+    var posX = -37;
+    var posY = 0;
     const Point = Java.type('java.awt.Point');
     const spawnpoint = new Point(posX, posY);
-    whirlpoolOfTime.spawnMonsterOnGroundBelow(timer1, spawnpoint);
+    parlor.spawnMonsterOnGroundBelow(parlorMob, spawnpoint);
 
     const PacketCreator = Java.type('org.gms.util.PacketCreator');
-    whirlpoolOfTime.broadcastMessage(PacketCreator.serverNotice(6, "Tick-Tock Tick-Tock! Timer makes it's presence known."));
+    parlor.broadcastMessage(PacketCreator.serverNotice(6, "Female Boss has stepped into the parlor, the night of Showa Town falling silent."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 

@@ -28,14 +28,14 @@ var log = null;
 var channel = null;
 var isinit = false;
 
-var MapID = 220050200;
-var BossID = 5220003;
-var BossName = "提莫";
+var MapID = 105070002;
+var BossID = 6300005;
+var BossName = "僵尸蘑菇王";
 /**刷新时间，分钟;  Generation time in minutes*/
 var BossTime = 180;
 /**指定Boss刷新的XY坐标位置; Specify the XY coordinate position for Boss refresh*/
-var point = new Point(Math.floor((Math.random() * 1400) - 700), 1030);
-var BossNotice= "嘀嗒...嘀嗒...！时间精灵提莫在轻声提醒。";
+var point = new Point(458, 0);
+var BossNotice= "墓土翻涌，苍白的菌盖自坟茔的阴影中缓缓撑起，腐臭的孢子随风四散‌";
 
 const methodName = "start";     //指定当前事件刷新Boss的函数，无需改动
 /**
@@ -53,8 +53,31 @@ function init() {
     scheduleNew();
 }
 
+/** 计算下一次检查的间隔(毫秒)：数据库配置优先，含禁用兜底、每分钟下限与全局倍率 */
+function getIntervalMillis() {
+    var cfg = em.getBossRespawnConfig();
+    // 已禁用：1 分钟后再检查一次，改回启用后能较快恢复
+    if (cfg != null && !cfg.isEnabled()) {
+        return 60 * 1000;
+    }
+    // 刷新间隔(分钟)：配置 <=0 时用脚本的 BossTime；getBossTime 会再乘一次全局倍率
+    var minutes = BossTime;
+    if (cfg != null && cfg.getSpawnInterval() != null && cfg.getSpawnInterval() > 0) {
+        minutes = cfg.getSpawnInterval();
+    }
+    var Timer = em.getBossTime(minutes * 60 * 1000);  //转为毫秒并加载时间倍率修正
+    // 兜底：倍率过小会把间隔抹成0，形成0延迟排期忙等
+    return Timer < 60 * 1000 ? 60 * 1000 : Timer;
+}
+
+/** 服务器启动时生成：立即检查一次，缺了就立即补上 */
 function scheduleNew() {
-    setupTask = em.schedule(methodName, 0);    //服务器启动时生成。每指定时间，服务器事件会检查boss是否存在，如果不存在，会立即生成boss。
+    setupTask = em.schedule(methodName, 0);
+}
+
+/** 配置热更新后重建排期：只按最新配置排下一拍，不立即检查、不立即生成Boss */
+function rescheduleNew() {
+    setupTask = em.schedule(methodName, getIntervalMillis());
 }
 
 function cancelSchedule() {
@@ -65,7 +88,27 @@ function cancelSchedule() {
 
 function start() {
     var graysPrairie = em.getChannelServer().getMapFactory().getMap(MapID);
-    var Timer = em.getBossTime(BossTime * 60 * 1000);  //转为毫秒并加载时间倍率修正
+    // ↓↓↓ 数据库覆盖项（改库即生效）：读不到配置则全部回落到脚本顶部常量 ↓↓↓
+    var cfg = em.getBossRespawnConfig();
+
+    // 已禁用：不生成也不再排期，1 分钟后再检查一次，改回启用后能较快恢复
+    if (cfg != null && !cfg.isEnabled()) {
+        em.schedule(methodName, 60 * 1000);
+        return;
+    }
+
+    var Timer = getIntervalMillis();
+
+    // 坐标与公告用局部变量承载，不直接改脚本级 point/BossNotice，
+    // 否则清空数据库覆盖项后无法回到脚本默认值
+    var bossPoint = point;
+    if (cfg != null && cfg.getPointX() != null && cfg.getPointY() != null) {
+        bossPoint = new Point(cfg.getPointX(), cfg.getPointY());
+    }
+    var bossNotice = BossNotice;
+    if (cfg != null && cfg.getNotice()) {
+        bossNotice = cfg.getNotice();
+    }
 
     if (graysPrairie.getMonsterById(BossID) != null) {
         em.schedule(methodName, Timer);
@@ -74,16 +117,16 @@ function start() {
     const BossObj = LifeFactory.getMonster(BossID);
     BossName = BossObj.getName() || BossName;
     try {
-        graysPrairie.spawnMonsterOnGroundBelow(BossObj, point);
+        graysPrairie.spawnMonsterOnGroundBelow(BossObj, bossPoint);
         if(isinit) {
-            log.info(`[事件脚本-野外BOSS] ${em.getName()} 已在频道 ${channel} 的 ${graysPrairie.getMapName()}(${MapID}) ${point.x} , ${point.y}) 生成 ${BossName}(${BossID})，检测间隔：${Timer / 60 / 1000} 分钟`);
+            log.info(`[事件脚本-野外BOSS] ${em.getName()} 已在频道 ${channel} 的 ${graysPrairie.getMapName()}(${MapID}) ${bossPoint.x} , ${bossPoint.y}) 生成 ${BossName}(${BossID})，检测间隔：${Timer / 60 / 1000} 分钟`);
         } else {
             isinit = true;
         }
     } catch (e) {
-        console.error(`[事件脚本-野外BOSS] ${em.getName()} 在频道 ${channel} 的 ${graysPrairie.getMapName()}(${MapID}) ${point.x} , ${point.y}) 生成 ${BossName}(${BossID}) 时出错`,e);
+        console.error(`[事件脚本-野外BOSS] ${em.getName()} 在频道 ${channel} 的 ${graysPrairie.getMapName()}(${MapID}) ${bossPoint.x} , ${bossPoint.y}) 生成 ${BossName}(${BossID}) 时出错`,e);
     }
-    graysPrairie.broadcastMessage(PacketCreator.serverNotice(6, `[野外BOSS] ${BossName}  ${BossNotice}`));     //聊天框输出当前地图范围的Boss登场消息
+    graysPrairie.broadcastMessage(PacketCreator.serverNotice(6, `[野外BOSS] ${BossName}  ${bossNotice}`));     //聊天框输出当前地图范围的Boss登场消息
 
     em.schedule(methodName, Timer);
 }

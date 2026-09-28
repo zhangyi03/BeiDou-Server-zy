@@ -21,7 +21,10 @@
 */
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Door boss Spawner (based on xQuasar's King Clang spawner)
+ Snowman Spawner
+ -- Edited by --------------------------------------------------------------------------------------
+ ThreeStep - based on xQuasar's King Clang spawner
+
  **/
 
 function init() {
@@ -39,25 +42,23 @@ function cancelSchedule() {
 }
 
 function start() {
-    var bossMobid = 9400611;
-    var bossMapid = 677000007;
-    var bossMsg = "Crocell has appeared!";
+    var snowmanValley = em.getChannelServer().getMapFactory().getMap(211040101);
+    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
+    var snowmanValleyMob = LifeFactory.getMonster(8220001);
 
-    var map = em.getChannelServer().getMapFactory().getMap(bossMapid);
-    if (map.getMonsterById(bossMobid) != null) {
+    if (snowmanValley.getMonsterById(8220001) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
-    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
+    var posX = 356;
+    var posY = 0;
     const Point = Java.type('java.awt.Point');
+    const spawnpoint = new Point(posX, posY);
+    snowmanValley.spawnMonsterOnGroundBelow(snowmanValleyMob, spawnpoint);
+
     const PacketCreator = Java.type('org.gms.util.PacketCreator');
-
-    var boss = LifeFactory.getMonster(bossMobid);
-    var bossPos = new Point(171, 50);
-    map.spawnMonsterOnGroundBelow(boss, bossPos);
-    map.broadcastMessage(PacketCreator.serverNotice(6, bossMsg));
-
+    snowmanValley.broadcastMessage(PacketCreator.serverNotice(6, "The Snowman has appeared in the Snowman Valley, frost gathering beneath its frozen steps."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 

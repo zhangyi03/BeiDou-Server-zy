@@ -1,8 +1,8 @@
 /*
 	This file is part of the OdinMS Maple Story Server
-    Copyright (C) 2008 Patrick Huy <patrick.huy@frz.cc> 
-					   Matthias Butz <matze@odinms.de>
-					   Jan Christian Meyer <vimes@odinms.de>
+    Copyright (C) 2008 Patrick Huy <patrick.huy@frz.cc>
+		       Matthias Butz <matze@odinms.de>
+		       Jan Christian Meyer <vimes@odinms.de>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as
@@ -19,14 +19,15 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Timer3 Spawner
+ Eliza Spawner
  -- Edited by --------------------------------------------------------------------------------------
  ThreeStep - based on xQuasar's King Clang spawner
 
  **/
+
+var setupTask;
 
 function init() {
     scheduleNew();
@@ -43,24 +44,20 @@ function cancelSchedule() {
 }
 
 function start() {
-    var lostTime2 = em.getChannelServer().getMapFactory().getMap(220050200);
     const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
-    var timer3 = LifeFactory.getMonster(5220003);
+    var eliza = LifeFactory.getMonster(8220000);
+    var stairwayToTheSky2 = em.getChannelServer().getMapFactory().getMap(200010300);
 
-    if (lostTime2.getMonsterById(5220003) != null) {
+    if (stairwayToTheSky2.getMonsterById(8220000) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
-    var posX;
-    var posY = 1030;
-    posX = Math.floor((Math.random() * 1400) - 700);
-    const Point = Java.type('java.awt.Point');
-    const spawnpoint = new Point(posX, posY);
-    lostTime2.spawnMonsterOnGroundBelow(timer3, spawnpoint);
-
     const PacketCreator = Java.type('org.gms.util.PacketCreator');
-    lostTime2.broadcastMessage(PacketCreator.serverNotice(6, "Tick-Tock Tick-Tock! Timer makes it's presence known."));
+    const Point = Java.type('java.awt.Point');
+    const spawnpoint = new Point(208, 83);
+    stairwayToTheSky2.spawnMonsterOnGroundBelow(eliza, spawnpoint);
+    stairwayToTheSky2.broadcastMessage(PacketCreator.serverNotice(6, "Eliza has appeared with a black whirlwind."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 

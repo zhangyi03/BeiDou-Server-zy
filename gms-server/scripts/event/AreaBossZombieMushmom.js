@@ -21,7 +21,10 @@
 */
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Door boss Spawner (based on xQuasar's King Clang spawner)
+ Zombie Mushmom Spawner
+ -- Edited by --------------------------------------------------------------------------------------
+ ThreeStep - based on xQuasar's King Clang spawner
+
  **/
 
 function init() {
@@ -39,25 +42,23 @@ function cancelSchedule() {
 }
 
 function start() {
-    var bossMobid = 9400612;
-    var bossMapid = 677000001;
-    var bossMsg = "Marbas has appeared!";
+    var zombieMushmomTomb = em.getChannelServer().getMapFactory().getMap(105070002);
+    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
+    var zombieMushmomTombMob = LifeFactory.getMonster(6300005);
 
-    var map = em.getChannelServer().getMapFactory().getMap(bossMapid);
-    if (map.getMonsterById(bossMobid) != null) {
+    if (zombieMushmomTomb.getMonsterById(6300005) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
-    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
+    var posX = 458;
+    var posY = 0;
     const Point = Java.type('java.awt.Point');
+    const spawnpoint = new Point(posX, posY);
+    zombieMushmomTomb.spawnMonsterOnGroundBelow(zombieMushmomTombMob, spawnpoint);
+
     const PacketCreator = Java.type('org.gms.util.PacketCreator');
-
-    var boss = LifeFactory.getMonster(bossMobid);
-    var bossPos = new Point(461, 61);
-    map.spawnMonsterOnGroundBelow(boss, bossPos);
-    map.broadcastMessage(PacketCreator.serverNotice(6, bossMsg));
-
+    zombieMushmomTomb.broadcastMessage(PacketCreator.serverNotice(6, "Zombie Mushmom has risen from the graveyard soil, pale spores drifting in the dark."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 

@@ -112,6 +112,16 @@ const GAME: AppRouteRecordRaw = {
         roles: ['admin'],
       },
     },
+    {
+      path: 'bossRespawn',
+      name: 'bossRespawn',
+      component: () => import('@/views/game/bossRespawn/index.vue'),
+      meta: {
+        locale: 'menu.game.bossRespawn',
+        requiresAuth: true,
+        roles: ['admin'],
+      },
+    },
   ],
 };
 

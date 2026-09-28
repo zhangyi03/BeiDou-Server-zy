@@ -173,6 +173,13 @@ public class Server {
     private static final HpMpAlertService hpMpAlertService = ServerManager.getApplicationContext().getBean(HpMpAlertService.class);
     private static final ServiceProperty serviceProperty = ServerManager.getApplicationContext().getBean(ServiceProperty.class);
     private static final AutobanConfigService autobanConfigService = ServerManager.getApplicationContext().getBean(AutobanConfigService.class);
+    private static final BossRespawnConfigService bossRespawnConfigService = ServerManager.getApplicationContext().getBean(BossRespawnConfigService.class);
+
+    /**
+     * 野外Boss刷新配置热更新周期（毫秒）。
+     * 直接改数据库后最多这么久就会自动刷新缓存并重建排期，无需重启或打命令。
+     */
+    private static final long BOSS_RESPAWN_CONFIG_REFRESH_INTERVAL = 60_000L;
 
     private Server() {
         ReadWriteLock worldLock = new ReentrantReadWriteLock(true);
@@ -727,6 +734,9 @@ public class Server {
         // 加载自动封禁配置
         autobanConfigService.loadConfigs();
 
+        // 加载野外Boss刷新配置（供事件脚本读取，改库即控制单个Boss刷新时间）
+        bossRespawnConfigService.loadConfigs();
+
         // 主动清理每日零点需要清理的数据
         new BossLogTask().run();
         new ExtendValueTask().run();
@@ -797,6 +807,8 @@ public class Server {
         tMan.register(new InvitationTask(), SECONDS.toMillis(30), SECONDS.toMillis(30));
         tMan.register(new RespawnTask(), GameConfig.getServerLong("respawn_interval"), GameConfig.getServerLong("respawn_interval"));
         tMan.register(new OnlineTimeTask(), 5000, 5000);
+        // 野外Boss刷新配置热更新：直接改库后无需重启/命令，最多 1 分钟自动生效并重建排期
+        tMan.register(new BossRespawnConfigRefreshTask(), BOSS_RESPAWN_CONFIG_REFRESH_INTERVAL, BOSS_RESPAWN_CONFIG_REFRESH_INTERVAL);
 
         timeLeft = getTimeLeftForNextDay();
         ExpeditionBossLog.resetBossLogTable();

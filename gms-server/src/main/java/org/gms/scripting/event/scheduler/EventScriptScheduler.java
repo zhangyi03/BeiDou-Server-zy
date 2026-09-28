@@ -46,6 +46,15 @@ public class EventScriptScheduler {
     private int idleProcs = 0;
     private final Map<Runnable, Long> registeredEntries = new HashMap<>();
 
+    /**
+     * 排期代次：每次 {@link #clearEntries()} 自增，用于作废"在途"的旧登记。
+     * <p>
+     * registerEntry 的写入是异步投递到 ThreadManager 的，若不做代次校验，
+     * 一个正在执行的排期任务可能在清空之后才把自己的下一拍登记进来，
+     * 形成再也取消不掉的"孤儿"条目 —— 同一事件就会并行跑多条定时链。
+     */
+    private long generation = 0;
+
     private ScheduledFuture<?> schedulerTask = null;
     private final Lock schedulerLock = new ReentrantLock(true);
 
@@ -103,6 +112,7 @@ public class EventScriptScheduler {
 
     public long registerEntry(final Runnable scheduledAction, final long duration) {
         long nextScheduledTime = Server.getInstance().getCurrentTime() + duration;
+        long entryGeneration = generation;
         ThreadManager.getInstance().newTask(() -> {
             schedulerLock.lock();
             try {
@@ -113,6 +123,11 @@ public class EventScriptScheduler {
                     }
 
                     schedulerTask = TimerManager.getInstance().register(this::runBaseSchedule, GameConfig.getServerLong("mob_status_monitor_proc"), GameConfig.getServerLong("mob_status_monitor_proc"));
+                }
+
+                if (entryGeneration != generation) {
+                    // 登记期间发生过重建排期，这次登记属于已被清掉的旧链，直接丢弃
+                    return;
                 }
 
                 registeredEntries.put(scheduledAction, nextScheduledTime);
@@ -133,6 +148,40 @@ public class EventScriptScheduler {
                 schedulerLock.unlock();
             }
         });
+    }
+
+    /**
+     * 同步清空当前全部待执行条目，并作废所有在途登记。
+     * <p>
+     * 与 {@link #cancelEntry(Runnable)} 的区别：后者只能取消调用方明确持有的那一个任务。
+     * 重建排期必须用本方法，否则历史上产生过的孤儿条目会残留下来，
+     * 表现为"改了刷新间隔却仍按旧节奏刷"。
+     * <p>
+     * 本方法同步执行（不投递 ThreadManager）：重建排期的调用方需要在它返回后
+     * 立即登记新排期，异步执行会导致"清空"晚于"登记"，把刚排好的任务一起清掉。
+     */
+    public void clearEntries() {
+        schedulerLock.lock();
+        try {
+            generation++;
+            registeredEntries.clear();
+            idleProcs = 0;
+        } finally {
+            schedulerLock.unlock();
+        }
+    }
+
+    /**
+     * 当前待执行条目数。仅用于诊断（判断是否存在孤儿排期），
+     * 由于登记是异步的，瞬时值可能滞后。
+     */
+    public int pendingCount() {
+        schedulerLock.lock();
+        try {
+            return registeredEntries.size();
+        } finally {
+            schedulerLock.unlock();
+        }
     }
 
     public void dispose() {

@@ -21,7 +21,10 @@
 */
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Door boss Spawner (based on xQuasar's King Clang spawner)
+ Timer Spawner
+ -- Edited by --------------------------------------------------------------------------------------
+ ThreeStep - based on xQuasar's King Clang spawner
+
  **/
 
 function init() {
@@ -39,25 +42,24 @@ function cancelSchedule() {
 }
 
 function start() {
-    var bossMobid = 9400613;
-    var bossMapid = 677000009;
-    var bossMsg = "Valefor has appeared!";
+    var lostTime1 = em.getChannelServer().getMapFactory().getMap(220050000);
+    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
+    var timer2 = LifeFactory.getMonster(5220003);
 
-    var map = em.getChannelServer().getMapFactory().getMap(bossMapid);
-    if (map.getMonsterById(bossMobid) != null) {
+    if (lostTime1.getMonsterById(5220003) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
-    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
+    var posX;
+    var posY = 1030;
+    posX = Math.floor((Math.random() * 1400) - 1000);
     const Point = Java.type('java.awt.Point');
+    const spawnpoint = new Point(posX, posY);
+    lostTime1.spawnMonsterOnGroundBelow(timer2, spawnpoint);
+
     const PacketCreator = Java.type('org.gms.util.PacketCreator');
-
-    var boss = LifeFactory.getMonster(bossMobid);
-    var bossPos = new Point(251, -841);
-    map.spawnMonsterOnGroundBelow(boss, bossPos);
-    map.broadcastMessage(PacketCreator.serverNotice(6, bossMsg));
-
+    lostTime1.broadcastMessage(PacketCreator.serverNotice(6, "Tick-Tock Tick-Tock! Timer makes it's presence known."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 

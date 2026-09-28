@@ -1,8 +1,8 @@
 /*
 	This file is part of the OdinMS Maple Story Server
-    Copyright (C) 2008 Patrick Huy <patrick.huy@frz.cc> 
-					   Matthias Butz <matze@odinms.de>
-					   Jan Christian Meyer <vimes@odinms.de>
+    Copyright (C) 2008 Patrick Huy <patrick.huy@frz.cc>
+		       Matthias Butz <matze@odinms.de>
+		       Jan Christian Meyer <vimes@odinms.de>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as
@@ -21,7 +21,7 @@
 */
 /**
  -- Odin JavaScript --------------------------------------------------------------------------------
- Faust1 Spawner
+ Blue Mushmom Spawner
  -- Edited by --------------------------------------------------------------------------------------
  ThreeStep - based on xQuasar's King Clang spawner
 
@@ -42,20 +42,23 @@ function cancelSchedule() {
 }
 
 function start() {
-    var theForestOfEvil1 = em.getChannelServer().getMapFactory().getMap(100040105);
-    if (theForestOfEvil1.getMonsterById(5220002) != null) {
+    var hallOfMushroom = em.getChannelServer().getMapFactory().getMap(800010100);
+    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
+    var hallOfMushroomMob = LifeFactory.getMonster(9400205);
+
+    if (hallOfMushroom.getMonsterById(9400205) != null) {
         em.schedule("start", 3 * 60 * 60 * 1000);
         return;
     }
 
-    const LifeFactory = Java.type('org.gms.server.life.LifeFactory');
-    const PacketCreator = Java.type('org.gms.util.PacketCreator');
+    var posX = 450;
+    var posY = 0;
     const Point = Java.type('java.awt.Point');
+    const spawnpoint = new Point(posX, posY);
+    hallOfMushroom.spawnMonsterOnGroundBelow(hallOfMushroomMob, spawnpoint);
 
-    var faust1 = LifeFactory.getMonster(5220002);
-    const spawnpoint = new Point(456, 278);
-    theForestOfEvil1.spawnMonsterOnGroundBelow(faust1, spawnpoint);
-    theForestOfEvil1.broadcastMessage(PacketCreator.serverNotice(6, "Faust appeared amidst the blue fog."));
+    const PacketCreator = Java.type('org.gms.util.PacketCreator');
+    hallOfMushroom.broadcastMessage(PacketCreator.serverNotice(6, "Blue Mushmom has appeared in the Hall of Mushroom, its azure cap glowing in the shrine."));
     em.schedule("start", 3 * 60 * 60 * 1000);
 }
 
