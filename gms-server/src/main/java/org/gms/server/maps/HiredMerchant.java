@@ -209,7 +209,8 @@ public class HiredMerchant extends AbstractMapObject {
         return -1; //Actually 0 because of the +1's.
     }
 
-    private void removeAllVisitors() {
+    // 只有店主进店整理才发维护提示，收店清退用 EXIT+0x12，客户端提示"已超过营业时间而关闭商店！"。
+    private void removeAllVisitors(boolean maintenance) {
         visitorLock.lock();
         try {
             for (int i = 0; i < 3; i++) {
@@ -218,8 +219,12 @@ public class HiredMerchant extends AbstractMapObject {
                 if (visitor != null) {
                     final Character visitorChr = visitor.chr;
                     visitorChr.setHiredMerchant(null);
-                    visitorChr.sendPacket(PacketCreator.leaveHiredMerchant(i + 1, 0x11));
-                    visitorChr.sendPacket(PacketCreator.hiredMerchantMaintenanceMessage());
+                    if (maintenance) {
+                        visitorChr.sendPacket(PacketCreator.leaveHiredMerchant(i + 1, 0x11));
+                        visitorChr.sendPacket(PacketCreator.hiredMerchantMaintenanceMessage());
+                    } else {
+                        visitorChr.sendPacket(PacketCreator.leaveHiredMerchant(i + 1, 0x12));
+                    }
                     visitors[i] = null;
                     addVisitorToHistory(visitor);
                 }
@@ -462,7 +467,7 @@ public class HiredMerchant extends AbstractMapObject {
             try {
                 setOpen(false);
                 if (map != null) {
-                    removeAllVisitors();
+                    removeAllVisitors(false);
                 }
             } finally {
                 visitorLock.unlock();
@@ -475,7 +480,7 @@ public class HiredMerchant extends AbstractMapObject {
         visitorLock.lock();
         try {
             setOpen(false);
-            removeAllVisitors();
+            removeAllVisitors(false);
 
             if (returnToOwner) {
                 closeOwnerMerchantAfterClaim(owner);
@@ -529,7 +534,7 @@ public class HiredMerchant extends AbstractMapObject {
         map.broadcastMessage(PacketCreator.removeHiredMerchantBox(ownerId));
         c.getChannelServer().removeHiredMerchant(ownerId, this);
 
-        this.removeAllVisitors();
+        this.removeAllVisitors(false);
         this.removeOwner(c.getPlayer());
 
         try {
@@ -592,7 +597,7 @@ public class HiredMerchant extends AbstractMapObject {
             }
             if (this.isOwner(chr)) {
                 this.setOpen(false);
-                this.removeAllVisitors();
+                this.removeAllVisitors(true);
 
                 chr.sendPacket(PacketCreator.getHiredMerchant(chr, this, false));
             } else if (!this.isOpen()) {
