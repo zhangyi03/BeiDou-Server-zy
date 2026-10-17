@@ -9093,7 +9093,15 @@ public class Character extends AbstractCharacterObject {
 
     @Override
     public void sendSpawnData(Client client) {
-        if (!this.isHidden() || client.getPlayer().gmLevel() > 1) {
+        if (client == null) {
+            return;
+        }
+        // 接收端不一定有 player：机器人的无头客户端（BotClient）从不 setPlayer，
+        // 而 MapleMap.addPlayer / sendObjectPlacement 会拿「机器人自己的 client」当接收端
+        // 去广播同图玩家，此时 client.getPlayer() 为 null，直接 gmLevel() 必 NPE。
+        // 没有 player 的接收端一律按「非 GM」处理：隐身角色不给它发 spawn 包（机器人本来就丢弃封包）。
+        Character receiver = client.getPlayer();
+        if (!this.isHidden() || (receiver != null && receiver.gmLevel() > 1)) {
             client.sendPacket(PacketCreator.spawnPlayerMapObject(client, this, false));
 
             if (buffEffects.containsKey(getJobMapChair(job))) { // mustn't effLock, chrLock sendSpawnData

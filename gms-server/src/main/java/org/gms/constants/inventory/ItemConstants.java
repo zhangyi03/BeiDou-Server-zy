@@ -21,6 +21,7 @@
 */
 package org.gms.constants.inventory;
 
+import org.gms.client.inventory.BodyPart;
 import org.gms.client.inventory.InventoryType;
 import org.gms.config.GameConfig;
 import org.gms.constants.id.ItemId;
@@ -219,6 +220,64 @@ public final class ItemConstants {
 
     public static boolean isWeapon(int itemId) {
         return itemId >= 1302000 && itemId < 1493000;
+    }
+
+    /**
+     * 装备大类前缀（itemId / 10000），如 1040002 → 104。
+     */
+    public static int getItemPrefix(int itemId) {
+        return itemId / 10000;
+    }
+
+    /**
+     * 装备该穿在哪个身体槽位（正数，对应 {@link BodyPart#getValue()}）。
+     * 找不到映射返回 0。机器人自动穿戴用它算 -slot。
+     */
+    public static int getEquipSlotType(int itemId) {
+        if (isWeapon(itemId)) {
+            return BodyPart.WEAPON.getValue();
+        }
+
+        switch (getItemPrefix(itemId)) {
+            case 100:
+                return BodyPart.CAP.getValue();
+            case 101:
+                return BodyPart.FACE_ACCESSORY.getValue();
+            case 102:
+                return BodyPart.EYE_ACCESSORY.getValue();
+            case 103:
+                return BodyPart.EAR_ACCESSORY.getValue();
+            case 104:
+                return BodyPart.COAT.getValue();
+            case 105:
+                return BodyPart.LONGCOAT.getValue();
+            case 106:
+                return BodyPart.PANTS.getValue();
+            case 107:
+                return BodyPart.SHOES.getValue();
+            case 108:
+                return BodyPart.GLOVE.getValue();
+            case 109:
+            case 119:
+            case 134:
+                return BodyPart.SHIELD.getValue();
+            case 110:
+                return BodyPart.CAPE.getValue();
+            case 111:
+                return BodyPart.RING_1.getValue();
+            case 112:
+                return BodyPart.PENDANT.getValue();
+            case 113:
+                return BodyPart.BELT.getValue();
+            case 114:
+                return BodyPart.MEDAL.getValue();
+            case 115:
+                return BodyPart.SHOULDER.getValue();
+            case 118:
+                return BodyPart.BADGE.getValue();
+            default:
+                return 0;
+        }
     }
 
     public static boolean isEquipment(int itemId) {

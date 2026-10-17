@@ -11,6 +11,8 @@ import login from '@/views/login/locale/en-US';
 import inventory from '@/views/game/inventory/locale/en-US';
 import autoban from '@/views/game/autoban/locale/en-US';
 import bossRespawn from '@/views/game/bossRespawn/locale/en-US';
+import botList from '@/views/bot/list/locale/en-US';
+import botEquipPool from '@/views/bot/equipPool/locale/en-US';
 import base from './en-US/base';
 
 export default {
@@ -30,6 +32,9 @@ export default {
   'menu.game.autoban': 'Autoban',
   'menu.game.bossRespawn': 'Boss Respawn',
   'menu.account': 'Account',
+  'menu.bot': 'Bot',
+  'menu.bot.list': 'Bot List',
+  'menu.bot.equipPool': 'Equip Random Pool',
   'menu.account.list': 'Account List',
   'menu.account.player': 'Player',
   'menu.arco': 'UI Doc',
@@ -61,4 +66,6 @@ export default {
   ...config,
   ...autoban,
   ...bossRespawn,
+  ...botList,
+  ...botEquipPool,
 };

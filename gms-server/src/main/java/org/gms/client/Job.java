@@ -113,6 +113,29 @@ public enum Job {
         return (getId() / 10 == basebranch && getId() >= basejob.getId()) || (basebranch % 10 == 0 && getId() / 100 == basejob.getId() / 100);
     }
 
+    /**
+     * 职业的进阶层级（转职次数），供机器人穿搭时判断可用武器范围。
+     *
+     * <p>0 = 新手，1 = 一转（100/200/300/400/500），2 = 二转（尾数 10/20/30），
+     * 3 = 三转（尾数 11/21/31），4 = 四转（尾数 12/22/32），其它返回 0。
+     */
+    public int getJobTier() {
+        if (id == 0) {
+            return 0;
+        }
+        int lastTwoDigits = id % 100;
+        if (lastTwoDigits == 0) {
+            return 1;
+        } else if (lastTwoDigits == 10 || lastTwoDigits == 20 || lastTwoDigits == 30) {
+            return 2;
+        } else if (lastTwoDigits == 11 || lastTwoDigits == 21 || lastTwoDigits == 31) {
+            return 3;
+        } else if (lastTwoDigits == 12 || lastTwoDigits == 22 || lastTwoDigits == 32) {
+            return 4;
+        }
+        return 0;
+    }
+
     public int getJobNiche() {
         return (id / 100) % 10;
         

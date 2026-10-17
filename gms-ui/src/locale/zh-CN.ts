@@ -11,6 +11,8 @@ import login from '@/views/login/locale/zh-CN';
 import inventory from '@/views/game/inventory/locale/zh-CN';
 import autoban from '@/views/game/autoban/locale/zh-CN';
 import bossRespawn from '@/views/game/bossRespawn/locale/zh-CN';
+import botList from '@/views/bot/list/locale/zh-CN';
+import botEquipPool from '@/views/bot/equipPool/locale/zh-CN';
 import baseConfig from './zh-CN/base';
 
 export default {
@@ -33,6 +35,9 @@ export default {
   'menu.account': '玩家管理',
   'menu.account.list': '账户列表',
   'menu.account.player': '玩家管理',
+  'menu.bot': '机器人管理',
+  'menu.bot.list': '机器人列表',
+  'menu.bot.equipPool': '装备随机池',
   'menu.arco': 'UI 开发文档',
   'menu.beiDou': '关于北斗',
   // 提示信息
@@ -64,4 +69,6 @@ export default {
   ...config,
   ...autoban,
   ...bossRespawn,
+  ...botList,
+  ...botEquipPool,
 };

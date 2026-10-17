@@ -92,13 +92,28 @@ public class Server {
     }
 
     private static final Logger log = LoggerFactory.getLogger(Server.class);
-    private static Server instance = null;
+    private static volatile Server instance = null;
 
+    /**
+     * 取全局唯一实例。
+     *
+     * <p>必须双重检查 + volatile：启动阶段 {@link org.gms.manager.ServerManager} 与机器人自动上线
+     * 等后台线程会并发调用本方法，旧的裸 {@code if (instance == null) instance = new Server()}
+     * 会造出两个实例——一个执行 {@code init()}、另一个 {@code worlds} 永远是空的，
+     * 表现为 {@code Channel.getWorldServer()} 返回 null 导致大区初始化失败。
+     */
     public static Server getInstance() {
-        if (instance == null) {
-            instance = new Server();
+        Server inst = instance;
+        if (inst == null) {
+            synchronized (Server.class) {
+                inst = instance;
+                if (inst == null) {
+                    inst = new Server();
+                    instance = inst;
+                }
+            }
         }
-        return instance;
+        return inst;
     }
 
     private static final Set<Integer> activeFly = new HashSet<>();
