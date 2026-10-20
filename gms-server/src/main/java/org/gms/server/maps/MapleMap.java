@@ -2404,6 +2404,17 @@ public class MapleMap {
     }
 
     public void addPlayer(final Character chr) {
+        addPlayer(chr, true);
+    }
+
+    /**
+     * @param enteringField 是否按「玩家自己进图」的入场动画处理。
+     *                      true 时 spawn 包会把坐标<b>抬高 42px</b>、姿态写成 6（跳跃），
+     *                      交由客户端自己播完下落、落地后再用 MOVE_PLAYER 回传真实坐标 ——
+     *                      真人玩家有客户端，机器人没有这一环，传 true 就会永远悬在那 42px 上
+     *                      并保持跳跃姿势。机器人上线必须传 false（用真实坐标 + 真实姿态直接摆好）。
+     */
+    public void addPlayer(final Character chr, final boolean enteringField) {
         cleanupGhostPlayers();   // 被动清理：进图前先清掉图上"已断线未正常移除"的幽灵玩家，避免其他人仍看到他
 
         int chrSize;
@@ -2550,13 +2561,13 @@ public class MapleMap {
         }
 
         if (chr.isHidden()) {
-            broadcastGMSpawnPlayerMapObjectMessage(chr, chr, true);
+            broadcastGMSpawnPlayerMapObjectMessage(chr, chr, enteringField);
             chr.sendPacket(PacketCreator.getGMEffect(0x10, (byte) 1));
 
             List<Pair<BuffStat, Integer>> dsstat = Collections.singletonList(new Pair<>(BuffStat.DARKSIGHT, 0));
             broadcastGMMessage(chr, PacketCreator.giveForeignBuff(chr.getId(), dsstat), false);
         } else {
-            broadcastSpawnPlayerMapObjectMessage(chr, chr, true);
+            broadcastSpawnPlayerMapObjectMessage(chr, chr, enteringField);
         }
 
         sendObjectPlacement(chr.getClient());

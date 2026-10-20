@@ -6,7 +6,10 @@ import org.gms.dao.entity.BotProfileDO;
 import org.gms.net.server.Server;
 import org.gms.net.server.channel.Channel;
 import org.gms.net.server.world.World;
+import org.gms.server.maps.Foothold;
 import org.gms.server.maps.MapleMap;
+import org.gms.server.maps.Portal;
+import org.gms.soloMapling.ArtificialPlayer.BotMovementSystem.BotMovement;
 import org.gms.soloMapling.BotClient;
 import org.gms.soloMapling.itemPool.EquipMetadataCache;
 
@@ -20,8 +23,9 @@ import java.awt.Point;
  * {@link Character#loadCharFromDB} 把角色读出来（连同 {@code inventoryitems} 里的装备一起）、
  * 塞进频道/世界/地图三处容器。外观与装备的随机只发生在首次上线，之后一律以库为准。
  *
- * <p>本轮只做生成（站桩），原版的下落动画（portal drop-down）与转身微动作依赖移动系统，
- * 留到移动系统移植时再接回。
+ * <p>本轮只做生成（站桩）。原版的下落动画（portal drop-down）依赖移动系统，留到移动系统
+ * 移植时再接回；<b>出生这一下不能播</b> —— 客户端会按角色出生坐标算「图层」，先摆在空中
+ * 再补 MOVE_PLAYER 落地，人落到地面了图层还留在半空，表现出来就是「被树/前景物件挡住」。
  *
  * @author WorkBuddy
  * @since 2026-10-17
@@ -100,9 +104,9 @@ public class BotGeneration {
 
         placeOnMap(bot, profile);
 
-        log.info("[BotGeneration] 机器人 {}（cid={}）已上线，地图 {} 坐标 ({}, {})",
+        log.info("[BotGeneration] 机器人 {}（cid={}）已上线，地图 {} 落点 ({}, {})，stance {}",
                 bot.getName(), bot.getId(), profile.getMapId(),
-                profile.getSpawnX(), profile.getSpawnY());
+                bot.getPosition().x, bot.getPosition().y, bot.getStance());
         return bot;
     }
 
@@ -125,10 +129,13 @@ public class BotGeneration {
             oldMap.removePlayer(bot);
         }
         bot.setMap(map);
-        bot.setPosition(new Point(
-                profile.getSpawnX() == null ? 0 : profile.getSpawnX(),
-                profile.getSpawnY() == null ? 0 : profile.getSpawnY()));
-        bot.setStance(0);
+        Point ground = resolveSpawnPoint(map, profile);
+        // 出生就直接站在地面上，不要先摆到空中再补 move 包落地。
+        // 客户端的「图层」（角色被前景树/物件遮挡的先后顺序）是拿角色坐标算的，
+        // 出生点在空中 → 图层也按空中那份算；后面的 MOVE_PLAYER 只会改坐标，
+        // 不会把图层重新算回来，于是人明明已经落地，画面上却还压在树后面。
+        bot.setPosition(ground);
+        bot.setStance(BotMovement.STANCE_IDLE_RIGHT);
 
         Channel channel = Server.getInstance().getChannel(bot.getWorld(), getBotClient().getChannel());
         World world = Server.getInstance().getWorld(bot.getWorld());
@@ -139,7 +146,94 @@ public class BotGeneration {
         channel.addPlayer(bot);
         world.addPlayer(bot);
         bot.setEnteredChannelWorld();
-        map.addPlayer(bot);
+        // 关键：第三个参数必须走 enteringField = false 的重载。
+        //
+        // 默认的 addPlayer(chr) 会把这次上线当成「真人自己进图」，广播出去的 spawn 包里
+        // 坐标被抬高 42px、姿态被写成 6（跳跃），本意是让客户端自己播一段「从上方落地」的
+        // 动画、落地后再用 MOVE_PLAYER 回传真实坐标。真人有客户端做这一步，机器人没有，
+        // 于是客户端就把它摆在半空 42px 处、还保持跳跃姿势 —— 之前查了半天「落点是对的、
+        // 画面上却卡在半空」，根因就在这里。
+        map.addPlayer(bot, false);
+    }
+
+    /**
+     * 算出机器人真正要站的落点。
+     *
+     * <p>机器人没有客户端，服务端也不替它跑重力：坐标给在空中就永远悬在那儿，所以上线前
+     * 必须自己把坐标吸到 foothold 上。
+     *
+     * <p>踩过的坑，别再退回去：
+     * <ul>
+     *   <li>{@code MapleMap#getPointBelow} 内部就是 {@code footholds.findBelow}，只找「起点下方」
+     *       的第一块地面。拿档案里默认的 {@code y = 0} 当起点，找到的往往是地图上方某个悬空
+     *       平台（甚至是树台），表现出来就是「机器人卡在半空中」。所以起点高度必须有参照物，
+     *       而出生传送门的 y 一定贴着地面。</li>
+     *   <li>不能用 {@code getGroundBelow}：它在 {@code calcPointBelow} 返回 null 时直接解引用会 NPE。</li>
+     *   <li>{@code MapleMap#getPortals()} 在本项目里被注释掉了，取传送门只能用
+     *       {@code findClosestPlayerSpawnpoint} / {@code getPortal(id)}。</li>
+     * </ul>
+     */
+    private static Point resolveSpawnPoint(MapleMap map, BotProfileDO profile) {
+        int x = profile.getSpawnX() == null ? 0 : profile.getSpawnX();
+        int y = profile.getSpawnY() == null ? 0 : profile.getSpawnY();
+        boolean hasCoord = x != 0 || y != 0;
+
+        // 出生传送门（pt=0/1 且不连其它地图）一定站在地面上，拿它当「地面高度」的参照
+        Portal spawnPortal = hasCoord ? map.findClosestPlayerSpawnpoint(new Point(x, y)) : null;
+        if (spawnPortal == null) {
+            spawnPortal = map.getPortal(0);
+        }
+        if (spawnPortal == null) {
+            spawnPortal = map.findClosestPlayerSpawnpoint(new Point(x, y));
+        }
+        Point portalPos = spawnPortal == null ? null : spawnPortal.getPosition();
+
+        // 参照高度：档案里给了 y 就以档案为准（可能想放到某一层平台），
+        // 默认的 y = 0 不作数，改用传送门的 y。
+        int refY = y != 0 ? y : (portalPos != null ? portalPos.y : y);
+
+        // 1) 档案给了坐标：保留它的 x，把 y 吸到该列的地面上
+        if (hasCoord) {
+            Point ground = groundBelow(map, new Point(x, refY));
+            // 落差过大说明抓到的不是同一层的地面（该 x 下面只剩悬空平台/树台），
+            // 这种情况宁可用出生点，也不要让机器人飘在半空。
+            if (ground != null && Math.abs(ground.y - refY) <= 400) {
+                log.info("[BotGeneration] 地图 {} 落点：档案 x={} + 参照高度 {} -> ({}, {})",
+                        map.getId(), x, refY, ground.x, ground.y);
+                return ground;
+            }
+            if (ground != null) {
+                log.info("[BotGeneration] 地图 {} 档案 x={} 下方的地面 y={} 离参照高度 {} 太远，改用出生点",
+                        map.getId(), x, ground.y, refY);
+            }
+        }
+
+        // 2) 退回出生传送门：它本身就在地面上，能吸附就吸附，吸不上就直接用它的坐标
+        if (portalPos != null) {
+            Point ground = groundBelow(map, portalPos);
+            Point spot = ground != null ? ground : portalPos;
+            log.info("[BotGeneration] 地图 {} 落点：出生传送门（{}）-> ({}, {})",
+                    map.getId(), ground != null ? "吸附地面" : "原坐标", spot.x, spot.y);
+            return spot;
+        }
+
+        log.warn("[BotGeneration] 地图 {} 没有可用的出生点（档案坐标 ({}, {})），机器人会停在空中",
+                map.getId(), x, y);
+        return new Point(x, y);
+    }
+
+    /**
+     * 从 {@code from} 往下找第一块 foothold，返回站在上面的坐标；下方没有地面返回 null。
+     *
+     * <p>起点取 {@code from.y - 14}：{@code findBelow} 的条件是 foothold 的 y >= 起点的 y，
+     * 从正好贴着地面的点开始找会漏掉脚下那块，所以先抬高一点。
+     */
+    private static Point groundBelow(MapleMap map, Point from) {
+        Foothold foothold = map.getFootholds().findBelow(new Point(from.x, from.y - 14));
+        if (foothold == null) {
+            return null;
+        }
+        return new Point(from.x, foothold.calculateFooting(from.x) - 1);
     }
 
     /**
