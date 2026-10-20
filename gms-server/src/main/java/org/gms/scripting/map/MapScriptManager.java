@@ -47,8 +47,17 @@ public class MapScriptManager extends AbstractScriptManager {
     }
 
     public boolean runMapScript(Client c, String mapScriptPath, boolean firstUser) {
+        if (c == null) {
+            return false;
+        }
+        // 无头客户端（机器人）没有 player：机器人共用一个 BotClient，从来不走 Client#setPlayer，
+        // 而地图脚本的 MapScriptMethods 全程以「当前角色」为上下文。这里取不到角色就直接跳过，
+        // 否则 firstUser 分支会在 chr.getMapId() 上 NPE，把整个机器人上线流程打断。
+        Character chr = c.getPlayer();
+        if (chr == null) {
+            return false;
+        }
         if (firstUser) {
-            Character chr = c.getPlayer();
             int mapid = chr.getMapId();
             if (chr.hasEntered(mapScriptPath, mapid)) {
                 return false;

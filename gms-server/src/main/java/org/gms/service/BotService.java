@@ -27,6 +27,7 @@ import org.gms.soloMapling.ArtificialPlayer.BotTier;
 import org.gms.soloMapling.ArtificialPlayer.BotTierStore;
 import org.gms.soloMapling.ArtificialPlayer.BotType;
 import org.gms.soloMapling.ArtificialPlayer.BotDecoratorSystem.BotDecorate;
+import org.gms.soloMapling.ArtificialPlayer.BotShopSystem.BotShop;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Service;
@@ -363,6 +364,16 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
         Character bot = BotGeneration.spawnBot(profile);
         ensureDecorated(profile, bot);
         runningBots.put(profile.getId(), bot);
+
+        // 摆摊出售：上线即铺摊（地图不是自由市场房间时 BotShop 会打一次 warn 并跳过）
+        if (BotType.SELLING_MERCHANT_BOT.name().equalsIgnoreCase(profile.getBotType())) {
+            try {
+                BotShop.openStall(bot);
+            } catch (Exception e) {
+                log.warn("[BotService] 机器人 {}（cid={}）开摊失败：{}",
+                        bot.getName(), bot.getId(), e.getMessage(), e);
+            }
+        }
     }
 
     // ------------------------------------------------------------------ 外观 / 装备落库
@@ -525,6 +536,13 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
     private void despawnOne(BotProfileDO profile) {
         Character bot = runningBots.remove(profile.getId());
         if (bot != null) {
+            // 先收摊（广播移除摊位框、摘掉地图对象），再从地图移除角色
+            try {
+                BotShop.closeStall(bot);
+            } catch (Exception e) {
+                log.warn("[BotService] 机器人 {}（cid={}）收摊失败：{}",
+                        bot.getName(), bot.getId(), e.getMessage(), e);
+            }
             BotGeneration.despawnBot(bot);
         }
     }

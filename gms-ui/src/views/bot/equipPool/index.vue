@@ -229,6 +229,102 @@
             </template>
           </a-table>
         </a-tab-pane>
+
+        <!-- ============================ 摆摊出售物品池 ============================ -->
+        <a-tab-pane key="SELL" :title="$t('bot.equipPool.tab.sell')">
+          <a-space style="margin-bottom: 12px">
+            <a-select v-model="sellCategory" :placeholder="$t('bot.equipPool.filter.category')" allow-clear
+              :style="{ width: '180px' }" @change="loadSell">
+              <a-option v-for="c in SELL_CATEGORY_OPTIONS" :key="c.value" :value="c.value">
+                {{ c.label }}
+              </a-option>
+            </a-select>
+            <a-button type="primary" status="success" @click="addSellRow">
+              {{ $t('bot.equipPool.addRow') }}
+            </a-button>
+            <a-button type="primary" status="danger" :disabled="selectedSell.length === 0"
+              @click="deleteSelected('SELL')">
+              {{ $t('bot.equipPool.deleteSelected') }}
+            </a-button>
+            <a-button type="primary" status="warning" :loading="reloading" @click="reloadSellClick">
+              {{ $t('bot.equipPool.reload') }}
+            </a-button>
+            <a-tag color="arcoblue">{{ $t('bot.equipPool.total', { total: sellRows.length }) }}</a-tag>
+          </a-space>
+          <a-alert class="tips" type="normal" show-icon>
+            {{ $t('bot.equipPool.sell.tips') }}
+          </a-alert>
+          <a-table row-key="rowKey" :loading="loading" :data="sellRows" v-model:selectedKeys="selectedSell"
+            :row-selection="{ type: 'checkbox', showCheckedAll: true }" column-resizable
+            :pagination="{ pageSize: 20, showTotal: true, showPageSize: true }" :bordered="{ cell: true }">
+            <template #columns>
+              <a-table-column title="ID" data-index="id" :width="80" align="center"
+                :sortable="{ sortDirections: ['ascend', 'descend'], sorter: sortById }">
+                <template #cell="{ record }">
+                  <span v-if="record.id">{{ record.id }}</span>
+                  <a-tag v-else color="orange">{{ $t('bot.equipPool.new') }}</a-tag>
+                </template>
+              </a-table-column>
+              <a-table-column :title="$t('bot.equipPool.column.category')" :width="150" align="center">
+                <template #cell="{ record }">
+                  <a-select v-model="record.category" size="small" allow-create>
+                    <a-option v-for="c in SELL_CATEGORY_OPTIONS" :key="c.value" :value="c.value">
+                      {{ c.label }}
+                    </a-option>
+                  </a-select>
+                </template>
+              </a-table-column>
+              <a-table-column :title="$t('bot.equipPool.column.itemId')" :width="130" align="center">
+                <template #cell="{ record }">
+                  <a-input-number v-model="record.itemId" :min="0" size="small" />
+                </template>
+              </a-table-column>
+              <a-table-column :title="$t('bot.equipPool.column.price')" :width="140" align="center">
+                <template #cell="{ record }">
+                  <a-input-number v-model="record.price" :min="0" size="small" />
+                </template>
+              </a-table-column>
+              <a-table-column :title="$t('bot.equipPool.column.qtyMin')" :width="120" align="center">
+                <template #cell="{ record }">
+                  <a-input-number v-model="record.qtyMin" :min="1" size="small" />
+                </template>
+              </a-table-column>
+              <a-table-column :title="$t('bot.equipPool.column.qtyMax')" :width="120" align="center">
+                <template #cell="{ record }">
+                  <a-input-number v-model="record.qtyMax" :min="1" size="small" />
+                </template>
+              </a-table-column>
+              <a-table-column :title="$t('bot.equipPool.column.weight')" :width="110" align="center">
+                <template #cell="{ record }">
+                  <a-input-number v-model="record.weight" :min="1" size="small" />
+                </template>
+              </a-table-column>
+              <a-table-column :title="$t('bot.list.column.note')" :width="240" align="center">
+                <template #cell="{ record }">
+                  <a-input v-model="record.note" :max-length="64" size="small" allow-clear />
+                </template>
+              </a-table-column>
+              <a-table-column :title="$t('bot.equipPool.column.enabled')" :width="100" align="center">
+                <template #cell="{ record }">
+                  <a-switch v-model="record.enabled" />
+                </template>
+              </a-table-column>
+              <a-table-column :title="$t('operation')" :width="160" align="center" fixed="right">
+                <template #cell="{ record }">
+                  <a-button size="mini" type="text" @click="saveSell(record)">
+                    {{ $t('button.save') }}
+                  </a-button>
+                  <a-popconfirm type="error" :content="$t('bot.equipPool.delete.tips')" position="left"
+                    @ok="deleteOneRow('SELL', record)">
+                    <a-button size="mini" type="text" status="danger">
+                      {{ $t('button.delete') }}
+                    </a-button>
+                  </a-popconfirm>
+                </template>
+              </a-table-column>
+            </template>
+          </a-table>
+        </a-tab-pane>
       </a-tabs>
     </a-card>
   </div>
@@ -244,14 +340,18 @@ import {
   BotEquipNxRow,
   BotEquipOmitRow,
   BotPoolType,
+  BotSellPoolRow,
   deletePoolRows,
   getGenericPool,
   getNxPool,
   getOmitPool,
+  getSellPool,
   reloadEquipPools,
+  reloadSellPool,
   saveGenericPool,
   saveNxPool,
   saveOmitPool,
+  saveSellPool,
 } from '@/api/bot';
 
 const { t } = useI18n();
@@ -283,6 +383,9 @@ const NX_CATEGORIES = [
   'rings',
 ];
 
+/** 摆摊出售物品池的分类（落库用的 key，界面文案走 i18n） */
+const SELL_CATEGORIES = ['scroll', 'darkscroll', 'star', 'potion'];
+
 /**
  * 分类下拉的展示项：value 始终是入库用的英文 key，label 只是界面文案。
  * 库里的分类可能被人工改成任意值（下拉支持 allow-create），那种情况没有对应文案，
@@ -292,7 +395,11 @@ const NX_CATEGORIES = [
  * （形如 'bot.equipPool.category.tops'），而 te() 内部走 resolveValue 按点号逐层下钻、
  * 不认整串扁平键，会恒返回 false；t() 则先做整串直接命中，所以 t 正常、te 恒 false。
  */
-const KNOWN_CATEGORIES = new Set([...GENERIC_CATEGORIES, ...NX_CATEGORIES]);
+const KNOWN_CATEGORIES = new Set([
+  ...GENERIC_CATEGORIES,
+  ...NX_CATEGORIES,
+  ...SELL_CATEGORIES,
+]);
 
 const categoryLabel = (c: string) =>
   KNOWN_CATEGORIES.has(c) ? t(`bot.equipPool.category.${c}`) : c;
@@ -303,6 +410,10 @@ const GENERIC_CATEGORY_OPTIONS = computed(() =>
 
 const NX_CATEGORY_OPTIONS = computed(() =>
   NX_CATEGORIES.map((c) => ({ value: c, label: categoryLabel(c) })),
+);
+
+const SELL_CATEGORY_OPTIONS = computed(() =>
+  SELL_CATEGORIES.map((c) => ({ value: c, label: categoryLabel(c) })),
 );
 
 /** 表格 row-key：库里的行用 id，新增未保存的行用负数占位，保证唯一且不撞 id */
@@ -338,15 +449,18 @@ const reloading = ref(false);
 const genericRows = ref<(BotEquipGenericRow & { rowKey: number })[]>([]);
 const nxRows = ref<(BotEquipNxRow & { rowKey: number })[]>([]);
 const omitRows = ref<(BotEquipOmitRow & { rowKey: number })[]>([]);
+const sellRows = ref<(BotSellPoolRow & { rowKey: number })[]>([]);
 
 // Arco 的 row-selection 用 (string | number)[]，这里跟着它的类型走，避免 vue-tsc 报错
 const selectedGeneric = ref<Array<string | number>>([]);
 const selectedNx = ref<Array<string | number>>([]);
 const selectedOmit = ref<Array<string | number>>([]);
+const selectedSell = ref<Array<string | number>>([]);
 
 const genericCategory = ref('');
 const nxCategory = ref('');
 const omitBlockType = ref('');
+const sellCategory = ref('');
 
 const loadGeneric = async () => {
   setLoading(true);
@@ -381,9 +495,21 @@ const loadOmit = async () => {
   }
 };
 
+const loadSell = async () => {
+  setLoading(true);
+  try {
+    const { data } = await getSellPool(sellCategory.value || undefined);
+    sellRows.value = withKeys(data || []);
+    selectedSell.value = [];
+  } finally {
+    setLoading(false);
+  }
+};
+
 const onTabChange = (key: string | number) => {
   if (key === 'GENERIC') loadGeneric();
   else if (key === 'NX') loadNx();
+  else if (key === 'SELL') loadSell();
   else loadOmit();
 };
 
@@ -415,6 +541,20 @@ const addOmitRow = () => {
     rangeEnd: 0,
     note: '',
     enabled: true,
+  });
+};
+
+const addSellRow = () => {
+  sellRows.value.unshift({
+    rowKey: draftSeq--,
+    category: sellCategory.value || 'scroll',
+    itemId: 0,
+    price: 0,
+    qtyMin: 1,
+    qtyMax: 1,
+    weight: 100,
+    enabled: true,
+    note: '',
   });
 };
 
@@ -487,6 +627,35 @@ const saveOmit = async (record: BotEquipOmitRow & { rowKey: number }) => {
   }
 };
 
+const saveSell = async (record: BotSellPoolRow & { rowKey: number }) => {
+  if (!record.category || !record.itemId) {
+    Message.warning(t('bot.equipPool.validate.required'));
+    return;
+  }
+  if (record.qtyMax < record.qtyMin) {
+    Message.warning(t('bot.equipPool.validate.qty'));
+    return;
+  }
+  setLoading(true);
+  try {
+    await saveSellPool({
+      id: record.id,
+      category: record.category,
+      itemId: record.itemId,
+      price: record.price || 0,
+      qtyMin: record.qtyMin || 1,
+      qtyMax: record.qtyMax || record.qtyMin || 1,
+      weight: record.weight || 100,
+      note: record.note || '',
+      enabled: record.enabled,
+    });
+    Message.success(t('bot.equipPool.save.success'));
+    await loadSell();
+  } finally {
+    setLoading(false);
+  }
+};
+
 const deleteOneRow = async (
   poolType: BotPoolType,
   record: { id?: number; rowKey: number }
@@ -496,6 +665,7 @@ const deleteOneRow = async (
     if (poolType === 'GENERIC') genericRows.value = genericRows.value.filter((r) => r.rowKey !== record.rowKey);
     if (poolType === 'NX') nxRows.value = nxRows.value.filter((r) => r.rowKey !== record.rowKey);
     if (poolType === 'OMIT') omitRows.value = omitRows.value.filter((r) => r.rowKey !== record.rowKey);
+    if (poolType === 'SELL') sellRows.value = sellRows.value.filter((r) => r.rowKey !== record.rowKey);
     return;
   }
   await deleteRows(poolType, [record.id]);
@@ -507,7 +677,9 @@ const deleteSelected = async (poolType: BotPoolType) => {
       ? selectedGeneric.value
       : poolType === 'NX'
         ? selectedNx.value
-        : selectedOmit.value;
+        : poolType === 'OMIT'
+          ? selectedOmit.value
+          : selectedSell.value;
   const ids = selected.map((k) => Number(k)).filter((k) => k > 0);
   if (ids.length === 0) {
     Message.warning(t('bot.equipPool.validate.selectSaved'));
@@ -523,6 +695,7 @@ const deleteRows = async (poolType: BotPoolType, ids: number[]) => {
     Message.success(t('bot.equipPool.delete.success'));
     if (poolType === 'GENERIC') await loadGeneric();
     else if (poolType === 'NX') await loadNx();
+    else if (poolType === 'SELL') await loadSell();
     else await loadOmit();
   } finally {
     setLoading(false);
@@ -535,6 +708,17 @@ const reloadClick = async () => {
     await reloadEquipPools();
     Message.success(t('bot.equipPool.reload.success'));
     onTabChange(activeTab.value);
+  } finally {
+    reloading.value = false;
+  }
+};
+
+const reloadSellClick = async () => {
+  reloading.value = true;
+  try {
+    await reloadSellPool();
+    Message.success(t('bot.equipPool.reload.sell.success'));
+    await loadSell();
   } finally {
     reloading.value = false;
   }

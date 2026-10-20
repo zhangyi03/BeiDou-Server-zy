@@ -8,6 +8,7 @@ import org.gms.constants.api.ApiConstant;
 import org.gms.dao.entity.BotEquipGenericPoolDO;
 import org.gms.dao.entity.BotEquipNxPoolDO;
 import org.gms.dao.entity.BotEquipOmitListDO;
+import org.gms.dao.entity.BotSellItemPoolDO;
 import org.gms.model.dto.BotCreateDTO;
 import org.gms.model.dto.BotEquipPoolDeleteDTO;
 import org.gms.model.dto.BotIdsDTO;
@@ -16,6 +17,7 @@ import org.gms.model.dto.BotUpdateDTO;
 import org.gms.model.dto.ResultBody;
 import org.gms.model.dto.SubmitBody;
 import org.gms.service.BotEquipPoolService;
+import org.gms.service.BotSellPoolService;
 import org.gms.service.BotService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -47,6 +49,7 @@ public class BotController {
 
     private final BotService botService;
     private final BotEquipPoolService botEquipPoolService;
+    private final BotSellPoolService botSellPoolService;
 
     // ---------------------------------------------------------------- 机器人档案
 
@@ -158,12 +161,17 @@ public class BotController {
     }
 
     @Tag(name = "/bot/" + ApiConstant.LATEST)
-    @Operation(summary = "批量删除装备池条目")
+    @Operation(summary = "批量删除池条目（SELL=摆摊出售物品池）")
     @PostMapping("/" + ApiConstant.LATEST + "/equipPool/delete")
     public ResultBody<Object> deletePoolRows(@RequestBody SubmitBody<BotEquipPoolDeleteDTO> request) {
         BotEquipPoolDeleteDTO data = request.getData();
-        botEquipPoolService.deleteRows(data.getPoolType(), data.getIds());
-        botEquipPoolService.reloadCaches();
+        if (BotSellPoolService.POOL_SELL.equalsIgnoreCase(data.getPoolType())) {
+            botSellPoolService.deleteRows(data.getIds());
+            botSellPoolService.reloadCaches();
+        } else {
+            botEquipPoolService.deleteRows(data.getPoolType(), data.getIds());
+            botEquipPoolService.reloadCaches();
+        }
         return ResultBody.success(request, null);
     }
 
@@ -175,6 +183,35 @@ public class BotController {
     @PostMapping("/" + ApiConstant.LATEST + "/equipPool/reload")
     public ResultBody<Object> reloadPools() {
         botEquipPoolService.reloadCaches();
+        return ResultBody.success();
+    }
+
+    // ---------------------------------------------------------------- 摆摊出售物品池
+
+    @Tag(name = "/bot/" + ApiConstant.LATEST)
+    @Operation(summary = "摆摊出售物品池列表（可按分类筛选）")
+    @GetMapping("/" + ApiConstant.LATEST + "/sellPool")
+    public ResultBody<List<BotSellItemPoolDO>> listSellPool(@RequestParam(value = "category", required = false) String category) {
+        return ResultBody.success(botSellPoolService.listPool(category));
+    }
+
+    @Tag(name = "/bot/" + ApiConstant.LATEST)
+    @Operation(summary = "保存摆摊出售物品池条目")
+    @PostMapping("/" + ApiConstant.LATEST + "/sellPool/save")
+    public ResultBody<Object> saveSellPool(@RequestBody SubmitBody<BotSellItemPoolDO> request) {
+        botSellPoolService.saveRow(request.getData());
+        botSellPoolService.reloadCaches();
+        return ResultBody.success(request, null);
+    }
+
+    /**
+     * ⚠️ 没有请求体，绝对不能加 {@code @RequestBody}。
+     */
+    @Tag(name = "/bot/" + ApiConstant.LATEST)
+    @Operation(summary = "让出售物品池立即重新读库")
+    @PostMapping("/" + ApiConstant.LATEST + "/sellPool/reload")
+    public ResultBody<Object> reloadSellPool() {
+        botSellPoolService.reloadCaches();
         return ResultBody.success();
     }
 }

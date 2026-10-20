@@ -89,9 +89,9 @@ export function resetBotEquip(ids: number[]) {
   return axios.post('/bot/v1/resetEquip', { ids });
 }
 
-// ------------------------------------------------------------------ 装备随机池
+// ------------------------------------------------------------------
 
-export type BotPoolType = 'GENERIC' | 'NX' | 'OMIT';
+export type BotPoolType = 'GENERIC' | 'NX' | 'OMIT' | 'SELL';
 
 export interface BotEquipGenericRow {
   id?: number;
@@ -159,4 +159,40 @@ export function deletePoolRows(poolType: BotPoolType, ids: number[]) {
 /** 无请求体，别给它传 data（拦截器不会包装空 body） */
 export function reloadEquipPools() {
   return axios.post('/bot/v1/equipPool/reload');
+}
+
+// ------------------------------------------------------------------ 摆摊出售物品池
+
+/** 一格货：买家付 price * 组数，拿到 item 数量 * 组数 个 */
+export interface BotSellPoolRow {
+  id?: number;
+  /** scroll / darkscroll / star / potion */
+  category: string;
+  itemId: number;
+  /** 每格单价（mesos） */
+  price: number;
+  /** 每格数量下限 */
+  qtyMin: number;
+  /** 每格数量上限 */
+  qtyMax: number;
+  /** 抽签权重，越大越容易被摆出来 */
+  weight: number;
+  enabled: boolean;
+  note: string;
+}
+
+export function getSellPool(category?: string) {
+  const url = category
+    ? `/bot/v1/sellPool?category=${category}`
+    : '/bot/v1/sellPool';
+  return axios.get<BotSellPoolRow[]>(url);
+}
+
+export function saveSellPool(data: BotSellPoolRow) {
+  return axios.post('/bot/v1/sellPool/save', data);
+}
+
+/** 无请求体，别给它传 data */
+export function reloadSellPool() {
+  return axios.post('/bot/v1/sellPool/reload');
 }

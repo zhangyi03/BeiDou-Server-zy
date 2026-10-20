@@ -37,7 +37,7 @@ export default {
   'menu.account.player': '玩家管理',
   'menu.bot': '机器人管理',
   'menu.bot.list': '机器人列表',
-  'menu.bot.equipPool': '装备随机池',
+  'menu.bot.equipPool': '配置池',
   'menu.arco': 'UI 开发文档',
   'menu.beiDou': '关于北斗',
   // 提示信息
