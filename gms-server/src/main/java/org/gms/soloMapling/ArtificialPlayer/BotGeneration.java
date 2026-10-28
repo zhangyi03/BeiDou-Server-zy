@@ -2,6 +2,7 @@ package org.gms.soloMapling.ArtificialPlayer;
 
 import lombok.extern.slf4j.Slf4j;
 import org.gms.client.Character;
+import org.gms.client.inventory.InventoryType;
 import org.gms.dao.entity.BotProfileDO;
 import org.gms.net.server.Server;
 import org.gms.net.server.channel.Channel;
@@ -101,6 +102,20 @@ public class BotGeneration {
         if (bot == null) {
             throw new IllegalStateException("加载角色 " + profile.getCharacterId() + " 失败（看 CharacterService 的日志）");
         }
+
+        // 关键：跳过「当前等级/属性能不能穿」这道校验。
+        //
+        // PacketCreator#addCharEquips 走的是 ItemInformationProvider#canWearEquipment，那个方法在
+        // Inventory#checked == false 时会把装备逐件按 reqLevel / reqSTR / reqDEX / reqINT / reqLUK
+        // 筛一遍，再把剩余的写进 spawn 包，最后把 checked 置 true 缓存住。
+        //
+        // 机器人的属性是建号时的 4/4/4/4（或 12/5），装备却是按档位随机的 —— 一堆高等级装备
+        // 因为「reqSTR 90 > 12」被筛掉，于是上线那一刻广播出去的 spawn 包里几乎是裸的；
+        // 而 checked 已经被置成 true，后续任何人进图拿到的都是完整装备。
+        // 表现出来就是：刚上线没装备，别人换线 / 重登之后就都有了。
+        //
+        // 机器人装备是服务端自己给的，不存在「穿不上」的业务语义，这里直接标成已校验。
+        bot.getInventory(InventoryType.EQUIPPED).checked(true);
 
         placeOnMap(bot, profile);
 

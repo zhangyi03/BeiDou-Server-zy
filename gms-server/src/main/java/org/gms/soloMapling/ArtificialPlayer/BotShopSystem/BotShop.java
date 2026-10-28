@@ -3,9 +3,11 @@ package org.gms.soloMapling.ArtificialPlayer.BotShopSystem;
 import org.gms.client.Character;
 import org.gms.client.inventory.Item;
 import org.gms.constants.game.GameConstants;
+import org.gms.server.ItemInformationProvider;
 import org.gms.server.maps.MapleMap;
 import org.gms.server.maps.PlayerShop;
 import org.gms.server.maps.PlayerShopItem;
+import org.gms.soloMapling.ArtificialPlayer.BotDialogueSystem.BotDialoguePool;
 import org.gms.util.PacketCreator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,17 +49,42 @@ public class BotShop {
     private static final int PLAYER_SHOP_ITEM_ID = 5140000;
 
     /**
-     * 一次上架的格数。{@code PlayerShop} 上限 16 格，8 格足够让货看起来不空。
+     * 一次上架的格数。{@code PlayerShop} 上限 16 格，12 格让六类货（卷轴 / 暗黑卷轴 /
+     * 飞镖 / 药水 / 矿石 / 装备）都能露脸，又不至于把面板塞满。
      */
-    private static final int SLOT_COUNT = 8;
+    private static final int SLOT_COUNT = 12;
 
-    private static final String SHOP_DESCRIPTION = "卷轴 / 药水 / 飞镖 便宜卖";
+    /**
+     * 库里 price 填 0 时的兜底倍率：摆摊价 = WZ 的 {@code info/price} × 该倍率。
+     */
+    private static final int AUTO_PRICE_MULTIPLIER = 2;
 
+    /**
+     * 自动定价的下限，防止 WZ 里价格写成 1 的活动装备被摆成白菜价。
+     */
+    private static final int MIN_EQUIP_PRICE = 50000;
+    private static final int MIN_ITEM_PRICE = 1000;
+
+    /**
+     * 装备自动定价的等级系数：WZ 没写 price 时按「需求等级 × 1 万」兜底。
+     */
+    private static final int LEVEL_PRICE_UNIT = 10000;
+
+    /**
+     * 对话池为空时的兜底摊位标题。正常情况标题从 {@code bot_dialogue_pool}(shop_name) 抽，
+     * 只有库里一条都没有时才会用到这里。
+     */
+    private static final String SHOP_DESCRIPTION = "装备 / 矿石 / 卷轴 / 药水 便宜卖";
+
+    /**
+     * 对话池为空时的兜底喊话。正常情况从 {@code bot_dialogue_pool}(shout) 抽。
+     */
     private static final String[] AD_LINES = {
-            "卷轴、药水、飞镖，走过路过别错过~",
+            "装备、矿石、卷轴、药水，走过路过别错过~",
             "新货上架，价格公道，老板来看看？",
             "收摊前最后一波特价，手慢无！",
             "强化卷轴齐全，欢迎选购~",
+            "白板装备便宜出，矿石论堆卖！",
     };
 
     /**
@@ -118,7 +145,7 @@ public class BotShop {
         }
 
         SellItemPool.load();
-        PlayerShop shop = new PlayerShop(bot, SHOP_DESCRIPTION, PLAYER_SHOP_ITEM_ID);
+        PlayerShop shop = new PlayerShop(bot, randomShopName(), PLAYER_SHOP_ITEM_ID);
         int stocked = stock(shop);
         if (stocked <= 0) {
             log.warn("[BotShop] 机器人 {} 开摊失败：出售物品池为空，请检查 bot_sell_item_pool", bot.getName());
@@ -213,18 +240,32 @@ public class BotShop {
     /**
      * 按池抽 {@link #SLOT_COUNT} 件货，逐格加到摊子上。
      *
+     * <p>装备和其它物品走两条生成路径：装备必须用 {@code ItemInformationProvider#getEquipById}
+     * 造出真正的 {@code Equip}（带强化次数/属性/等级段），否则 {@code PacketCreator#addItemInfo}
+     * 里的 {@code (Equip) item} 会抛 ClassCastException，就算不炸，客户端收到的装备也缺属性段。
+     * 一格只放一件。
+     *
      * @return 实际上架的格数
      */
     private static int stock(PlayerShop shop) {
         List<SellItemPool.PoolItem> picked = SellItemPool.randomItems(SLOT_COUNT);
         int added = 0;
         for (SellItemPool.PoolItem poolItem : picked) {
-            int qty = poolItem.qtyMax > poolItem.qtyMin
-                    ? ThreadLocalRandom.current().nextInt(poolItem.qtyMin, poolItem.qtyMax + 1)
-                    : poolItem.qtyMin;
-            Item item = new Item(poolItem.itemId, (short) 0, (short) qty);
-            // bundles=1：一格就是一组，买家买 1 组付 price、拿 qty 个
-            if (shop.addItem(new PlayerShopItem(item, (short) 1, poolItem.price))) {
+            Item item;
+            if (poolItem.equip) {
+                item = ItemInformationProvider.getInstance().getEquipById(poolItem.itemId);
+                if (item == null) {
+                    log.warn("[BotShop] 装备 {} 生成失败（WZ 里没有这条），跳过", poolItem.itemId);
+                    continue;
+                }
+            } else {
+                int qty = poolItem.qtyMax > poolItem.qtyMin
+                        ? ThreadLocalRandom.current().nextInt(poolItem.qtyMin, poolItem.qtyMax + 1)
+                        : poolItem.qtyMin;
+                item = new Item(poolItem.itemId, (short) 0, (short) qty);
+            }
+            // bundles=1：一格就是一组，买家买 1 组付 price、拿「每格数量」个
+            if (shop.addItem(new PlayerShopItem(item, (short) 1, shopPriceOf(poolItem)))) {
                 added++;
             }
         }
@@ -232,10 +273,48 @@ public class BotShop {
     }
 
     /**
+     * 一格的标价。
+     *
+     * <p>库里填了正数就用库价；填 0 视为「按 WZ 自动定价」——新人往池子里加行时只填
+     * 物品 ID 也能直接开卖：
+     * <ul>
+     *   <li>装备：{@code max(WZ售价 × 2, 需求等级 × 1万, 5万)}，防止 WZ 里写 price=1
+     *       的活动装备被白菜价卖掉；</li>
+     *   <li>其它（矿石 / 卷轴 / 药水 / 飞镖）：{@code max(WZ售价 × 2, 1000)}。</li>
+     * </ul>
+     */
+    private static int shopPriceOf(SellItemPool.PoolItem poolItem) {
+        if (poolItem.price > 0) {
+            return poolItem.price;
+        }
+        ItemInformationProvider ii = ItemInformationProvider.getInstance();
+        int wzPrice = Math.max(0, ii.getWholePrice(poolItem.itemId));
+        int base = wzPrice * AUTO_PRICE_MULTIPLIER;
+        if (poolItem.equip) {
+            // getEquipLevelReq 返回 Integer，WZ 缺 info 时是 null，别直接拆箱
+            Integer level = ii.getEquipLevelReq(poolItem.itemId);
+            int byLevel = (level == null ? 0 : Math.max(0, level)) * LEVEL_PRICE_UNIT;
+            return Math.max(Math.max(base, byLevel), MIN_EQUIP_PRICE);
+        }
+        return Math.max(base, MIN_ITEM_PRICE);
+    }
+
+    /**
      * 机器人喊一句广告。用主线聊天包原地广播，不需要客户端。
      */
     private static void shout(Character bot) {
-        String line = AD_LINES[ThreadLocalRandom.current().nextInt(AD_LINES.length)];
+        String line = BotDialoguePool.randomShoutLine();
+        if (line == null || line.isBlank()) {
+            line = AD_LINES[ThreadLocalRandom.current().nextInt(AD_LINES.length)];
+        }
         bot.getMap().broadcastMessage(PacketCreator.getChatText(bot.getId(), line, false, 0));
+    }
+
+    /**
+     * 摊位标题：优先从对话池（{@code shop_name}）抽，池空退回内置文案。
+     */
+    private static String randomShopName() {
+        String name = BotDialoguePool.randomShopName();
+        return name == null || name.isBlank() ? SHOP_DESCRIPTION : name;
     }
 }

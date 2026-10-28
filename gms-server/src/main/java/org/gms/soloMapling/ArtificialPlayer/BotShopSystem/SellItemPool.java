@@ -1,5 +1,7 @@
 package org.gms.soloMapling.ArtificialPlayer.BotShopSystem;
 
+import org.gms.client.inventory.InventoryType;
+import org.gms.constants.inventory.ItemConstants;
 import org.gms.dao.entity.BotSellItemPoolDO;
 import org.gms.soloMapling.config.BotConfigBridge;
 import org.slf4j.Logger;
@@ -23,7 +25,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * <p>抽签规则：
  * <ul>
  *   <li><b>按分类轮流</b>——先把分类顺序打乱，再第 i 格抽第 {@code i % 分类数} 类，
- *       避免 8 格全是药水；</li>
+ *       避免整摊货全是药水（或加了装备/矿石之后整摊全是装备）；</li>
  *   <li><b>类内加权</b>——同一分类里按 {@code weight} 加权随机，权重高的更容易出现；</li>
  *   <li><b>一次不重复</b>——同一批货里不会出现两个相同的物品 ID。</li>
  * </ul>
@@ -46,6 +48,11 @@ public class SellItemPool {
         public final int qtyMax;
         public final int weight;
         public final String note;
+        /**
+         * 是否装备。装备上架必须构造成 {@code Equip}（带属性段），不能当普通 {@code Item} 发，
+         * 而且一格只能放一件，所以生成物品时按这个标记分流。
+         */
+        public final boolean equip;
 
         PoolItem(BotSellItemPoolDO row) {
             this.category = row.getCategory();
@@ -55,6 +62,8 @@ public class SellItemPool {
             this.qtyMax = Math.max(this.qtyMin, row.getQtyMax() == null ? this.qtyMin : row.getQtyMax());
             this.weight = Math.max(1, row.getWeight() == null ? 100 : row.getWeight());
             this.note = row.getNote() == null ? "" : row.getNote();
+            this.equip = itemId > 0
+                    && ItemConstants.getInventoryType(itemId) == InventoryType.EQUIP;
         }
     }
 

@@ -19,8 +19,11 @@ import java.io.Serializable;
  * 的每个格子就是一个 {@code PlayerShopItem(item, bundles, price)}：
  * 买家付 {@code price * bundles}，拿到 {@code item.quantity * bundles} 个。
  *
- * <p>⚠️ {@code category} 只是个分池标签（卷轴 / 暗黑卷轴 / 飞镖 / 药水），
- * 抽签时按分类轮流抽，避免一次上架 8 格全是药水。
+ * <p>⚠️ {@code category} 只是个分池标签（卷轴 / 暗黑卷轴 / 飞镖 / 药水 / 矿石 / 装备），
+ * 抽签时按分类轮流抽，避免一次上架整摊货全是药水。
+ *
+ * <p>装备行（{@code category = "equip"}）由服务端构造成真正的 {@code Equip} 再上架，
+ * 一格只能放一件；{@code price} 填 0 表示按 WZ 售价自动定价。
  *
  * @author WorkBuddy
  * @since 2026-10-20
@@ -39,7 +42,7 @@ public class BotSellItemPoolDO implements Serializable {
     private Integer id;
 
     /**
-     * scroll / darkscroll / star / potion
+     * scroll / darkscroll / star / potion / ore / equip
      */
     private String category;
 

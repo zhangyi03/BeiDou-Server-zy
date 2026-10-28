@@ -196,3 +196,39 @@ export function saveSellPool(data: BotSellPoolRow) {
 export function reloadSellPool() {
   return axios.post('/bot/v1/sellPool/reload');
 }
+
+// ------------------------------------------------------------------ 对话池
+
+/** 对话池类型：shop_name=摆摊名称，shout=喊话内容 */
+export type BotDialoguePoolType = 'shop_name' | 'shout';
+
+export interface BotDialoguePoolRow {
+  id?: number;
+  poolType: string;
+  content: string;
+  /** 抽签权重，越大越容易被抽到 */
+  weight: number;
+  enabled: boolean;
+  note: string;
+}
+
+export function getDialoguePool(poolType?: string) {
+  const url = poolType
+    ? `/bot/v1/dialoguePool?poolType=${poolType}`
+    : '/bot/v1/dialoguePool';
+  return axios.get<BotDialoguePoolRow[]>(url);
+}
+
+export function saveDialoguePool(data: BotDialoguePoolRow) {
+  return axios.post('/bot/v1/dialoguePool/save', data);
+}
+
+/** 删除只传 id（全表唯一，不需要 poolType） */
+export function deleteDialoguePool(ids: number[]) {
+  return axios.post('/bot/v1/dialoguePool/delete', { ids });
+}
+
+/** 无请求体，别给它传 data */
+export function reloadDialoguePool() {
+  return axios.post('/bot/v1/dialoguePool/reload');
+}

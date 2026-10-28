@@ -384,7 +384,7 @@ const NX_CATEGORIES = [
 ];
 
 /** 摆摊出售物品池的分类（落库用的 key，界面文案走 i18n） */
-const SELL_CATEGORIES = ['scroll', 'darkscroll', 'star', 'potion'];
+const SELL_CATEGORIES = ['scroll', 'darkscroll', 'star', 'potion', 'ore', 'equip'];
 
 /**
  * 分类下拉的展示项：value 始终是入库用的英文 key，label 只是界面文案。

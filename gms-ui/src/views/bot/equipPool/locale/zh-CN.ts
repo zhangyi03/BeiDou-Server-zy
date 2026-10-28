@@ -6,7 +6,7 @@ export default {
   'bot.equipPool.tab.omit': '禁止穿戴表',
   'bot.equipPool.tab.sell': '摆摊出售物品池',
   'bot.equipPool.sell.tips':
-    '摆摊出售类型的机器人会在自由市场房间里开个人商店，货架从这张表随机抽 8 格。单价是「每格」的价钱：买家买 1 组付单价、拿到「每格数量」个（药水按瓶、飞镖按个、卷轴固定 1）。权重越高越容易被摆出来；同一批货不会出现重复物品。',
+    '摆摊出售类型的机器人会在自由市场房间里开个人商店，货架从这张表随机抽 12 格（按分类轮流抽，同类内按权重加权）。单价是「每格」的价钱：买家买 1 组付单价、拿到「每格数量」个（药水按瓶、飞镖按个、卷轴/装备固定 1）。单价填 0 = 按 WZ 售价自动定价（装备另有 5 万保底）；权重越高越容易被摆出来；同一批货不会出现重复物品。',
   'bot.equipPool.filter.category': '按分类筛选',
   'bot.equipPool.filter.blockType': '按类型筛选',
   'bot.equipPool.addRow': '新增一行',
@@ -40,6 +40,8 @@ export default {
   'bot.equipPool.category.darkscroll': '暗黑卷轴',
   'bot.equipPool.category.star': '飞镖',
   'bot.equipPool.category.potion': '药水',
+  'bot.equipPool.category.ore': '矿石',
+  'bot.equipPool.category.equip': '装备',
   'bot.equipPool.gender.derive': '按ID推导',
   'bot.equipPool.gender.unisex': '通用',
   'bot.equipPool.delete.tips': '删除后机器人不会再抽到它，确认删除？',

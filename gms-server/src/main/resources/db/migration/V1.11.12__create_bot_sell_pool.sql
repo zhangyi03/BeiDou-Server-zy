@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS `bot_sell_item_pool` (
 INSERT INTO `bot_sell_item_pool`
   (`category`, `item_id`, `price`, `qty_min`, `qty_max`, `weight`, `enabled`, `note`)
 VALUES
-  ('scroll', 2040302, 1300000, 1, 1, 100, 1, 'Earring Int 10%'),
-  ('scroll', 2040301, 2500000, 1, 1, 100, 1, 'Earring Int 60%'),
+  ('scroll', 2040302, 1300000, 1, 1, 100, 1, '耳环智力卷轴10%'),
+  ('scroll', 2040301, 2500000, 1, 1, 100, 1, '耳环智力卷轴60%'),
   ('scroll', 2044702, 500000, 1, 1, 100, 1, 'Claw Att 10%'),
   ('scroll', 2044701, 1500000, 1, 1, 100, 1, 'Claw Att 60%'),
   ('scroll', 2043302, 550000, 1, 1, 100, 1, 'Dagger Att 10%'),

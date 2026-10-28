@@ -1,10 +1,12 @@
 package org.gms.soloMapling.config;
 
 import lombok.extern.slf4j.Slf4j;
+import org.gms.dao.entity.BotDialoguePoolDO;
 import org.gms.dao.entity.BotEquipGenericPoolDO;
 import org.gms.dao.entity.BotEquipNxPoolDO;
 import org.gms.dao.entity.BotEquipOmitListDO;
 import org.gms.dao.entity.BotSellItemPoolDO;
+import org.gms.service.BotDialoguePoolService;
 import org.gms.service.BotEquipPoolService;
 import org.gms.service.BotSellPoolService;
 import org.springframework.context.ApplicationContext;
@@ -18,7 +20,8 @@ import java.util.List;
  * 游戏侧（静态方法）访问机器人配置的桥。
  *
  * <p>为什么需要它：{@code GenericEquipPool.load()} / {@code NXItemPool.load()} /
- * {@code EquipOmitList.load()} / {@code SellItemPool.load()} 都是从静态上下文被调用的（{@code BotDecorate} 里是 static 方法），
+ * {@code EquipOmitList.load()} / {@code SellItemPool.load()} / {@code BotDialoguePool.load()}
+ * 都是从静态上下文被调用的（{@code BotDecorate} 里是 static 方法），
  * 拿不到 Spring 注入，只能通过 {@link ApplicationContextAware} 把容器挂到静态字段上，
  * 再由这里懒取 bean。
  *
@@ -99,6 +102,25 @@ public class BotConfigBridge implements ApplicationContextAware {
             return ctx.getBean(BotSellPoolService.class).loadEnabledPool();
         } catch (Exception e) {
             log.error("BotConfigBridge: 取 BotSellPoolService 失败", e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 对话池（只返回启用行）。
+     *
+     * @param poolType {@code shop_name}（摆摊名称）或 {@code shout}（喊话内容）
+     */
+    public static List<BotDialoguePoolDO> dialoguePool(String poolType) {
+        ApplicationContext ctx = context;
+        if (ctx == null) {
+            log.error("BotConfigBridge: Spring 上下文未就绪，机器人对话池读取失败（本次返回空集合）");
+            return Collections.emptyList();
+        }
+        try {
+            return ctx.getBean(BotDialoguePoolService.class).loadEnabledPool(poolType);
+        } catch (Exception e) {
+            log.error("BotConfigBridge: 取 BotDialoguePoolService 失败", e);
             return Collections.emptyList();
         }
     }

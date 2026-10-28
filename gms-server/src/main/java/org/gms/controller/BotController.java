@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.AllArgsConstructor;
 import org.gms.constants.api.ApiConstant;
+import org.gms.dao.entity.BotDialoguePoolDO;
 import org.gms.dao.entity.BotEquipGenericPoolDO;
 import org.gms.dao.entity.BotEquipNxPoolDO;
 import org.gms.dao.entity.BotEquipOmitListDO;
@@ -16,6 +17,7 @@ import org.gms.model.dto.BotProfileDTO;
 import org.gms.model.dto.BotUpdateDTO;
 import org.gms.model.dto.ResultBody;
 import org.gms.model.dto.SubmitBody;
+import org.gms.service.BotDialoguePoolService;
 import org.gms.service.BotEquipPoolService;
 import org.gms.service.BotSellPoolService;
 import org.gms.service.BotService;
@@ -50,6 +52,7 @@ public class BotController {
     private final BotService botService;
     private final BotEquipPoolService botEquipPoolService;
     private final BotSellPoolService botSellPoolService;
+    private final BotDialoguePoolService botDialoguePoolService;
 
     // ---------------------------------------------------------------- 机器人档案
 
@@ -212,6 +215,44 @@ public class BotController {
     @PostMapping("/" + ApiConstant.LATEST + "/sellPool/reload")
     public ResultBody<Object> reloadSellPool() {
         botSellPoolService.reloadCaches();
+        return ResultBody.success();
+    }
+
+    // ---------------------------------------------------------------- 对话池
+
+    @Tag(name = "/bot/" + ApiConstant.LATEST)
+    @Operation(summary = "对话池列表（poolType=shop_name 摆摊名称 / shout 喊话内容）")
+    @GetMapping("/" + ApiConstant.LATEST + "/dialoguePool")
+    public ResultBody<List<BotDialoguePoolDO>> listDialoguePool(@RequestParam(value = "poolType", required = false) String poolType) {
+        return ResultBody.success(botDialoguePoolService.listPool(poolType));
+    }
+
+    @Tag(name = "/bot/" + ApiConstant.LATEST)
+    @Operation(summary = "保存对话池条目（id 为空=新增）")
+    @PostMapping("/" + ApiConstant.LATEST + "/dialoguePool/save")
+    public ResultBody<Object> saveDialoguePool(@RequestBody SubmitBody<BotDialoguePoolDO> request) {
+        botDialoguePoolService.saveRow(request.getData());
+        botDialoguePoolService.reloadCaches();
+        return ResultBody.success(request, null);
+    }
+
+    @Tag(name = "/bot/" + ApiConstant.LATEST)
+    @Operation(summary = "批量删除对话池条目（id 在全表唯一，不需要传 poolType）")
+    @PostMapping("/" + ApiConstant.LATEST + "/dialoguePool/delete")
+    public ResultBody<Object> deleteDialoguePool(@RequestBody SubmitBody<BotIdsDTO> request) {
+        botDialoguePoolService.deleteRows(request.getData().getIds());
+        botDialoguePoolService.reloadCaches();
+        return ResultBody.success(request, null);
+    }
+
+    /**
+     * ⚠️ 没有请求体，绝对不能加 {@code @RequestBody}。
+     */
+    @Tag(name = "/bot/" + ApiConstant.LATEST)
+    @Operation(summary = "让对话池立即重新读库")
+    @PostMapping("/" + ApiConstant.LATEST + "/dialoguePool/reload")
+    public ResultBody<Object> reloadDialoguePool() {
+        botDialoguePoolService.reloadCaches();
         return ResultBody.success();
     }
 }

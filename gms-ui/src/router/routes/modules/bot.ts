@@ -36,6 +36,16 @@ const BOT: AppRouteRecordRaw = {
         roles: ['admin'],
       },
     },
+    {
+      path: 'dialogue',
+      name: 'botDialogue',
+      component: () => import('@/views/bot/dialogue/index.vue'),
+      meta: {
+        locale: 'menu.bot.dialogue',
+        requiresAuth: true,
+        roles: ['admin'],
+      },
+    },
   ],
 };
 

@@ -6,7 +6,7 @@ export default {
   'bot.equipPool.tab.omit': 'Omit List',
   'bot.equipPool.tab.sell': 'Merchant Stall Pool',
   'bot.equipPool.sell.tips':
-    'Selling-merchant bots open a PlayerShop in a Free Market room and pick 8 slots from this table. Price is per slot: the buyer pays price for one bundle and gets "qty" items (potions by bottle, stars by piece, scrolls always 1). Higher weight means more likely to be stocked; one restock never repeats an item.',
+    'Selling-merchant bots open a PlayerShop in a Free Market room and pick 12 slots from this table (categories rotate, weighted pick inside each category). Price is per slot: the buyer pays price for one bundle and gets "qty" items (potions by bottle, stars by piece, scrolls/equips always 1). Price 0 means auto-price from the WZ shop price (equips have a 50k floor). Higher weight means more likely to be stocked; one restock never repeats an item.',
   'bot.equipPool.filter.category': 'Filter by category',
   'bot.equipPool.filter.blockType': 'Filter by block type',
   'bot.equipPool.addRow': 'Add Row',
@@ -40,6 +40,8 @@ export default {
   'bot.equipPool.category.darkscroll': 'Dark Scrolls',
   'bot.equipPool.category.star': 'Throwing Stars',
   'bot.equipPool.category.potion': 'Potions',
+  'bot.equipPool.category.ore': 'Ores',
+  'bot.equipPool.category.equip': 'Equips',
   'bot.equipPool.gender.derive': 'From ID',
   'bot.equipPool.gender.unisex': 'Unisex',
   'bot.equipPool.delete.tips': 'Bots will stop rolling this item. Delete?',

@@ -19,6 +19,7 @@ import org.gms.model.dto.BotCreateDTO;
 import org.gms.model.dto.BotProfileDTO;
 import org.gms.model.dto.BotUpdateDTO;
 import org.gms.net.server.Server;
+import org.gms.server.maps.MapleMap;
 import org.gms.soloMapling.BotCharacterFactory;
 import org.gms.soloMapling.BotClient;
 import org.gms.soloMapling.BotInventorySaver;
@@ -362,7 +363,16 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
             return;
         }
         Character bot = BotGeneration.spawnBot(profile);
-        ensureDecorated(profile, bot);
+        boolean reEquipped = ensureDecorated(profile, bot);
+        if (reEquipped) {
+            // 上线这一次 spawn 包是在「装饰之前」广播出去的：首次生成的机器人身上还是空的，
+            // 同图玩家看到的自然是没有装备的样子。装饰完必须补一次外观更新，
+            // 否则要等他们自己换线 / 重登、重新收一份 spawn 包才会显示装备。
+            MapleMap map = bot.getMap();
+            if (map != null) {
+                map.broadcastUpdateCharLookMessage(bot, bot);
+            }
+        }
         runningBots.put(profile.getId(), bot);
 
         // 摆摊出售：上线即铺摊（地图不是自由市场房间时 BotShop 会打一次 warn 并跳过）
@@ -392,20 +402,23 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
      *
      * <p>落库失败不会阻断上线：内存里这套装备是好的，只是没持久化，
      * 记 error 并把 {@code decorated} 留在 0，下次上线重试。
+     *
+     * @return 是否真的改动过装备栏。true 时调用方需要补一次外观广播 ——
+     * 上线那次 spawn 包早就发出去了，不补广播的话同图玩家看不到新穿的装备。
      */
-    private void ensureDecorated(BotProfileDO profile, Character bot) {
+    private boolean ensureDecorated(BotProfileDO profile, Character bot) {
         boolean hasEquip = BotInventorySaver.hasEquipped(bot);
 
         if (profile.isDecorated()) {
             BotTierStore.setTier(bot, parseTier(profile.getBotTier()));
             if (hasEquip) {
-                return;
+                return false;
             }
             log.info("[BotService] 机器人 {}（cid={}）外观已固化但身上没装备，只补装备",
                     bot.getName(), bot.getId());
             BotDecorate.decorateEquipsOnly(bot);
             persistItems(bot);
-            return;
+            return true;
         }
 
         if (hasEquip) {
@@ -414,7 +427,7 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
             BotTierStore.setTier(bot, parseTier(profile.getBotTier()));
             profile.setDecorated(true);
             botProfileMapper.update(profile);
-            return;
+            return false;
         }
 
         BotDecorate.decorateExisting(bot);
@@ -424,6 +437,7 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
             profile.setDecorated(true);
         }
         botProfileMapper.update(profile);
+        return true;
     }
 
     /**
