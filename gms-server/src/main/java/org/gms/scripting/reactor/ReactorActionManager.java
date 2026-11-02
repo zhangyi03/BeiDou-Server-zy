@@ -292,6 +292,24 @@ public class ReactorActionManager extends AbstractPlayerInteraction {
         return pos;
     }
 
+    /**
+     * 地图广播。
+     *
+     * <p>父类实现是 {@code getPlayer().getMap().broadcastMessage(...)}，机器人（BotClient）
+     * 的 {@code getPlayer()} 恒为 null，一行 NPE 就会把整个 {@code act()} 脚本打断
+     * —— OPQ 祭坛的反应堆脚本正是先 {@code rm.mapMessage(...)} 再 {@code rm.spawnNpc(...)}，
+     * 结果 Eak 永远不出现。这里在无玩家时直接广播到反应堆所在地图。
+     */
+    @Override
+    public void mapMessage(int type, String message) {
+        Character player = getPlayer();
+        if (player == null) {
+            reactor.getMap().broadcastMessage(org.gms.util.PacketCreator.serverNotice(type, message));
+            return;
+        }
+        super.mapMessage(type, message);
+    }
+
     public void spawnNpc(int npcId) {
         spawnNpc(npcId, getPosition());
     }

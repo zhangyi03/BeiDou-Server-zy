@@ -27,7 +27,9 @@ import java.awt.Point;
 @Slf4j
 public final class BotMovement {
 
-    /** v83 客户端 stance：4/5 = 右/左站立，6/7 = 右/左跳跃 */
+    /** v83 客户端 stance：2/3 = 右/左走，4/5 = 右/左站立，6/7 = 右/左跳跃 */
+    public static final byte STANCE_MOVE_RIGHT = 2;
+    public static final byte STANCE_MOVE_LEFT = 3;
     public static final byte STANCE_IDLE_RIGHT = 4;
     public static final byte STANCE_IDLE_LEFT = 5;
     public static final byte STANCE_JUMP_RIGHT = 6;

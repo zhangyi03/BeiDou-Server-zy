@@ -880,15 +880,23 @@ public class AbstractPlayerInteraction {
     }
 
     public void removeAll(int id, Client cl) {
+        // 无头客户端（机器人）共用同一个 BotClient 且从不 setPlayer，
+        // getPlayer() 恒为 null。事件开局时 eim.dropAllExclusiveItems() 会把
+        // 队里所有人（含机器人）挨个走一遍，这里不判空就会 NPE 并中断清理循环。
+        Character player = (cl == null) ? null : cl.getPlayer();
+        if (player == null) {
+            return;
+        }
+
         InventoryType invType = ItemConstants.getInventoryType(id);
-        int possessed = cl.getPlayer().getInventory(invType).countById(id);
+        int possessed = player.getInventory(invType).countById(id);
         if (possessed > 0) {
             InventoryManipulator.removeById(cl, ItemConstants.getInventoryType(id), id, possessed, true, false);
             cl.sendPacket(PacketCreator.getShowItemGain(id, (short) -possessed, true));
         }
 
         if (invType == InventoryType.EQUIP) {
-            if (cl.getPlayer().getInventory(InventoryType.EQUIPPED).countById(id) > 0) {
+            if (player.getInventory(InventoryType.EQUIPPED).countById(id) > 0) {
                 InventoryManipulator.removeById(cl, InventoryType.EQUIPPED, id, 1, true, false);
                 cl.sendPacket(PacketCreator.getShowItemGain(id, (short) -1, true));
             }

@@ -392,8 +392,10 @@ public class Reactor extends AbstractMapObject {
                     cancelReactorTimeout();  // 取消超时
                     attackHit = wHit;  // 设置击中标志
 
-                    Character player = c.getPlayer();
-                    if (GameConfig.getServerBoolean("use_debug") && player.isGM()) {
+                    Character player = c == null ? null : c.getPlayer();
+                    // 机器人的 Client 是无头的（getPlayer() 恒为 null），GM 调试分支必须先判空，
+                    // 否则 NPE 会在推进状态之前跳出整个 try，反应堆就此停在原地。
+                    if (player != null && GameConfig.getServerBoolean("use_debug") && player.isGM()) {
                         player.dropMessage(5, "击中反应器 " + this.getId() + " 位置 " + charPos + " , 姿态 " + stance + " , 技能ID " + skillid + " , 状态 " + state + " 状态大小 " + stats.getStateSize(state));  // GM调试信息
                     }
                     ReactorScriptManager.getInstance().onHit(c, this);  // 调用击中脚本

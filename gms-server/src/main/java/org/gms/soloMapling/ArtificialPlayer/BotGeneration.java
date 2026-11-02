@@ -189,8 +189,9 @@ public class BotGeneration {
      * </ul>
      */
     private static Point resolveSpawnPoint(MapleMap map, BotProfileDO profile) {
-        int x = profile.getSpawnX() == null ? 0 : profile.getSpawnX();
-        int y = profile.getSpawnY() == null ? 0 : profile.getSpawnY();
+        // profile 为 null = 「没给坐标，只要能站人的地方」，走出生传送门那条路
+        int x = profile == null || profile.getSpawnX() == null ? 0 : profile.getSpawnX();
+        int y = profile == null || profile.getSpawnY() == null ? 0 : profile.getSpawnY();
         boolean hasCoord = x != 0 || y != 0;
 
         // 出生传送门（pt=0/1 且不连其它地图）一定站在地面上，拿它当「地面高度」的参照
@@ -249,6 +250,72 @@ public class BotGeneration {
             return null;
         }
         return new Point(from.x, foothold.calculateFooting(from.x) - 1);
+    }
+
+    /**
+     * 让已经在线的机器人换到另一张地图（或同图内换坐标）。
+     *
+     * <p>机器人没有客户端，走不了 {@code Character#changeMap}（那条路径要发封包、要算传送门），
+     * 这里按「下线一张图 + 上线一张图」的最小步骤做，落点仍然要吸到地面上 —— 否则客户端会
+     * 按空中的坐标算图层，人就被前景树挡住（这个坑在出生流程里已经踩过一次）。
+     *
+     * @param mapId 目标地图
+     * @param pos   目标坐标，{@code null} 表示用该图出生点
+     * @return 是否成功
+     */
+    public static boolean warpBotToLocation(Character bot, int mapId, Point pos) {
+        if (bot == null) {
+            return false;
+        }
+        MapleMap target = getBotClient().getChannelServer().getMapFactory().getMap(mapId);
+        if (target == null) {
+            log.warn("[BotGeneration] 机器人 {} 想换到地图 {}，但该地图不存在", bot.getName(), mapId);
+            return false;
+        }
+        return warpBotToLocation(bot, target, pos);
+    }
+
+    public static boolean warpBotToLocation(Character bot, MapleMap target, Point pos) {
+        if (bot == null || target == null) {
+            return false;
+        }
+        MapleMap oldMap = bot.getMap();
+        if (oldMap == target) {
+            // 同图内挪位置：不能再 addPlayer 一次（客户端会多出一个角色），只发移动包
+            Point landing = pos == null ? resolveSpawnPoint(target, null) : groundBelow(target, pos);
+            if (landing == null) {
+                landing = bot.getPosition();
+            }
+            bot.setPosition(landing);
+            target.movePlayer(bot, landing);
+            return true;
+        }
+        if (oldMap != null) {
+            oldMap.removePlayer(bot);
+        }
+        Point landing = pos == null ? resolveSpawnPoint(target, null) : groundBelow(target, pos);
+        if (landing == null) {
+            Portal spawn = target.getPortal(0);
+            landing = spawn == null ? new Point(0, 0) : spawn.getPosition();
+        }
+        bot.setMap(target);
+        bot.setPosition(landing);
+        bot.setStance(BotMovement.STANCE_IDLE_RIGHT);
+        target.addPlayer(bot, false);
+        log.debug("[BotGeneration] 机器人 {}（cid={}）已换到地图 {}，落点 ({}, {})",
+                bot.getName(), bot.getId(), target.getId(), landing.x, landing.y);
+        return true;
+    }
+
+    public static boolean warpBotToLocation(Character bot, int mapId) {
+        return warpBotToLocation(bot, mapId, null);
+    }
+
+    /**
+     * 上游签名的兼容重载：{@code (角色, 坐标, 目标地图)}。
+     */
+    public static boolean warpBotToLocation(Character bot, Point pos, MapleMap target) {
+        return warpBotToLocation(bot, target, pos);
     }
 
     /**

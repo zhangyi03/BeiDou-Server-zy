@@ -15,4 +15,9 @@ public interface InPacket extends Packet {
     int available();
     void seek(int byteOffset);
     int getPosition();
+
+    /**
+     * 复制一份未读报文（readerIndex 归零）。机器人录制回放要用。
+     */
+    InPacket copy();
 }

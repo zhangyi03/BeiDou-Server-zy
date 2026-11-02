@@ -260,6 +260,88 @@ public abstract class AbstractMovementPacketHandler extends AbstractPacketHandle
     }
 
     /**
+     * 机器人录制回放专用的「按包推进坐标」。
+     *
+     * <p>从上游 SoloMapling 原样移植：机器人不是真实客户端，没有 socket，回放一段录制移动时
+     * 需要服务端自己按包里的绝对坐标把 {@code Character} 的位置/姿态更新掉，否则后续的
+     * 「到没到」「在不在范围内」全部失真。与上面的 {@link #updatePosition} 相比，
+     * 这里不记录 foothold 轨迹，只做最小同步。
+     */
+    public static void updatePositionBot(InPacket p, AnimatedMapObject target, int yOffset) throws EmptyMovementException {
+        byte numCommands = p.readByte();
+        if (numCommands < 1) {
+            throw new EmptyMovementException(p);
+        }
+        for (byte i = 0; i < numCommands; i++) {
+            byte command = p.readByte();
+            switch (command) {
+                case 0: // normal move
+                case 5:
+                case 17: { // Float
+                    // 绝对位移：服务端只需要这一段
+                    short xpos = p.readShort();
+                    short ypos = p.readShort();
+                    target.setPosition(new Point(xpos, ypos + yOffset));
+                    p.skip(6); // xwobble / ywobble / fh
+                    byte newstate = p.readByte();
+                    target.setStance(newstate);
+                    p.readShort(); // duration
+                    break;
+                }
+                case 1:
+                case 2:
+                case 6: // fj
+                case 12:
+                case 13: // Shot-jump-back thing
+                case 16: // Float
+                case 18:
+                case 19: // Springs on maps
+                case 20: // Aran Combat Step
+                case 22: {
+                    // 相对位移：服务端只关心姿态
+                    p.skip(4);
+                    byte newstate = p.readByte();
+                    target.setStance(newstate);
+                    p.readShort(); // duration
+                    break;
+                }
+                case 3:
+                case 4: // teleport
+                case 7: // assaulter
+                case 8: // assassinate
+                case 9: // rush
+                case 11: // chair
+                {
+                    p.skip(8);
+                    byte newstate = p.readByte();
+                    target.setStance(newstate);
+                    break;
+                }
+                case 14:
+                    p.skip(9); // jump down
+                    break;
+                case 10: // Change Equip
+                    p.readByte();
+                    break;
+                case 15: {
+                    p.skip(12);
+                    byte newstate = p.readByte();
+                    target.setStance(newstate);
+                    p.readShort(); // duration
+                    break;
+                }
+                case 21: {
+                    p.skip(3);
+                    break;
+                }
+                default:
+                    log.warn("Unhandled Case: {}", command);
+                    throw new EmptyMovementException(p);
+            }
+        }
+    }
+
+    /**
      * 处理瞬移动作（3/4）：同步坐标并在玩家对象上记录传送前后坐标。
      */
     private static void handleTeleportMove(InPacket p, AnimatedMapObject target, int yOffset) {

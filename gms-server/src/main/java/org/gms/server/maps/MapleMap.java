@@ -439,7 +439,14 @@ public class MapleMap {
         }
 
         for (Character chr : inRangeCharacters) {
-            packetbakery.sendPackets(chr.getClient());
+            // 无头客户端（机器人）共用同一个 BotClient，且从不 setPlayer，
+            // 掉落/生成封包里一旦取 c.getPlayer() 就会 NPE，直接把整段广播打断。
+            // 机器人本来也收不到任何包，跳过即可。
+            Client c = chr.getClient();
+            if (c == null || c.getPlayer() == null) {
+                continue;
+            }
+            packetbakery.sendPackets(c);
         }
     }
 

@@ -35,6 +35,8 @@ import org.gms.net.server.world.PartyCharacter;
 import org.gms.net.server.world.PartyOperation;
 import org.gms.net.server.world.World;
 import org.gms.util.PacketCreator;
+import org.gms.soloMapling.BotRegistry;
+import org.gms.soloMapling.ArtificialPlayer.BotPartySystem.BotPartyQueue;
 
 import java.util.List;
 
@@ -97,6 +99,10 @@ public final class PartyOperationHandler extends AbstractPacketHandler {
                         if (party.getMembers().size() < 6) {
                             if (InviteCoordinator.createInvite(InviteType.PARTY, player, party.getId(), invited.getId())) {
                                 invited.sendPacket(PacketCreator.partyInvite(player));
+                                // 机器人没有客户端，不会回包应答；把邀请塞进它的队列，让状态机自己接受
+                                if (BotRegistry.isBot(invited.getId())) {
+                                    BotPartyQueue.addPartyInvite(invited, player, party.getId());
+                                }
                             } else {
                                 c.sendPacket(PacketCreator.partyStatusMessage(22, invited.getName()));
                             }

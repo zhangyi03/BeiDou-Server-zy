@@ -49,8 +49,11 @@ public class BotClient extends Client {
     }
 
     @Override
-    public void updateLoginState(int newState) {
-        // 无头客户端：不写 accounts.loggedin，也不注册在线会话
+    public boolean updateLoginState(int newState) {
+        // 无头客户端：不写 accounts.loggedin，也不注册在线会话。
+        // 返回值语义是「这次状态切换是否成功」，调用方（如 PlayerLoggedinHandler）
+        // 拿到 false 会直接踢人，机器人必须假装成功，否则一旦有人走到这条路径就被断开。
+        return true;
     }
 
     @Override

@@ -19,6 +19,19 @@ public class ByteBufInPacket implements InPacket {
         return ByteBufUtil.getBytes(byteBuf);
     }
 
+    /**
+     * 复制一份「未读」的报文（readerIndex 归零）。
+     *
+     * <p>机器人录制回放时需要「边推进位置边比较目标点」，同一条包可能被读两次；
+     * 上游 SoloMapling 的 {@code InPacket} 接口里就有这个方法，本移植版补上。
+     */
+    @Override
+    public InPacket copy() {
+        ByteBuf duplicated = byteBuf.duplicate();
+        duplicated.readerIndex(0);
+        return new ByteBufInPacket(duplicated);
+    }
+
     @Override
     public byte readByte() {
         return byteBuf.readByte();

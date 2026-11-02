@@ -4,6 +4,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.gms.client.Character;
+import org.gms.constants.string.CharsetConstants;
 import org.gms.client.Job;
 import org.gms.client.SkinColor;
 import org.gms.client.creator.CharacterFactoryRecipe;
@@ -12,6 +13,7 @@ import org.gms.dao.mapper.CharactersMapper;
 import org.gms.exception.BizException;
 import org.gms.model.dto.AddAccountDTO;
 import org.gms.service.AccountService;
+import org.gms.util.ThreadLocalUtil;
 import org.springframework.stereotype.Service;
 
 import java.security.NoSuchAlgorithmException;
@@ -50,10 +52,55 @@ public class BotCharacterFactory {
     public static final String ACCOUNT_PREFIX = "bot_";
 
     /**
-     * characters.name 的列宽是 VARCHAR(13)
+     * 角色名的<b>字节</b>上限，不是列宽。
+     *
+     * <p>{@code characters.name} 是 {@code VARCHAR(13)}（MySQL 按<b>字符</b>计），
+     * 所以 7 个汉字也存得进去；但角色名在封包里是<b>定长 13 字节</b>写的
+     * （{@code PacketCreator.addCharStats} / {@code addPartyStatus} 都是
+     * {@code writeFixedString(getRightPaddedStr(name, '\0', 13))}），
+     * 而 {@code ByteBufOutPacket.writeFixedString} 内部是
+     * {@code Arrays.copyOf(bytes, 13)} —— 按字节硬砍，不管是不是半个汉字。
+     *
+     * <p>中文服走 GBK（{@link CharsetConstants}），一个汉字 2 字节，
+     * 「天空组队机器人1」= 15 字节，砍完变成「天空组队机器」+ 半个汉字的残字节；
+     * 五台机器人砍出来的前缀完全一样，队伍面板里就成了「名字全一样/全乱」。
      */
-    private static final int NAME_MAX_LEN = 13;
+    private static final int NAME_MAX_BYTES = 13;
+
+    /**
+     * 字符数下限（1 个汉字也算 1 个字符，与客户端输入框一致）
+     */
     private static final int NAME_MIN_LEN = 4;
+
+    /**
+     * 按服务端当前语言对应的字符集算名字的字节数 —— 必须和发包侧用同一套字符集，
+     * 否则校验通过、发出去还是被砍。{@code getClientLang()} 在无客户端上下文（web 线程）里
+     * 返回 0，{@code Language.fromLang} 会回落到服务端语言，正好是我们要的。
+     */
+    private static int nameByteLength(String name) {
+        return name.getBytes(CharsetConstants.getCharset(ThreadLocalUtil.getClientLang())).length;
+    }
+
+    /**
+     * 按字符边界截断到不超过 {@code maxBytes} 字节（删掉放不下的整个字符，绝不产生半个汉字）。
+     */
+    private static String truncateToBytes(String value, int maxBytes) {
+        if (nameByteLength(value) <= maxBytes) {
+            return value;
+        }
+        StringBuilder sb = new StringBuilder();
+        int used = 0;
+        for (int i = 0; i < value.length(); i++) {
+            String ch = String.valueOf(value.charAt(i));
+            int len = nameByteLength(ch);
+            if (used + len > maxBytes) {
+                break;
+            }
+            sb.append(ch);
+            used += len;
+        }
+        return sb.toString();
+    }
 
     /**
      * 生成随机角色名用的音节表（够拼出上百种组合，撞名再补随机后缀）
@@ -169,8 +216,14 @@ public class BotCharacterFactory {
     private String resolveName(String requestedName) {
         String name = requestedName == null ? "" : requestedName.trim();
         if (!name.isEmpty()) {
-            if (name.length() < NAME_MIN_LEN || name.length() > NAME_MAX_LEN) {
-                throw BizException.illegalArgument("角色名长度必须在 " + NAME_MIN_LEN + "~" + NAME_MAX_LEN + " 之间");
+            if (name.length() < NAME_MIN_LEN) {
+                throw BizException.illegalArgument("角色名至少 " + NAME_MIN_LEN + " 个字符");
+            }
+            int bytes = nameByteLength(name);
+            if (bytes > NAME_MAX_BYTES) {
+                throw BizException.illegalArgument("角色名最多 " + NAME_MAX_BYTES
+                        + " 字节（中文约 6 个字），「" + name + "」当前 " + bytes + " 字节，"
+                        + "否则队伍/好友面板里的名字会被截断成乱码");
             }
             if (isNameTaken(name)) {
                 throw BizException.illegalArgument("角色名 " + name + " 已被占用");
@@ -196,9 +249,8 @@ public class BotCharacterFactory {
         String a = SYLLABLES[rnd.nextInt(SYLLABLES.length)];
         String b = SYLLABLES[rnd.nextInt(SYLLABLES.length)];
         String s = capitalize(a) + capitalize(b);
-        if (s.length() > NAME_MAX_LEN) {
-            s = s.substring(0, NAME_MAX_LEN);
-        }
+        // 音节表全是 ASCII，按字节截断和按字符截断等价；统一走字节是为了只有一处口径
+        s = truncateToBytes(s, NAME_MAX_BYTES);
         if (s.length() < NAME_MIN_LEN) {
             s = s + rnd.nextInt(100);
         }

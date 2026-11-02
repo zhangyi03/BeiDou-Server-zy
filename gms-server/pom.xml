@@ -37,6 +37,7 @@
         <spring-boot-maven-plugin>3.3.1</spring-boot-maven-plugin> <!-- Disabled. (for building thin jar) -->
 
         <!-- Dependencies -->
+        <jgrapht.version>1.5.2</jgrapht.version>
         <graalvm-js.version>23.0.4</graalvm-js.version>
         <graalvm-js-scriptengine.version>24.0.1</graalvm-js-scriptengine.version> <!-- ScriptEngine implementation -->
         <netty.version>4.1.109.Final</netty.version> <!-- Networking -->
@@ -221,6 +222,17 @@
             <artifactId>mybatis-flex-codegen</artifactId>
             <version>${mybatis-flex.version}</version>
             <scope>test</scope>
+        </dependency>
+        <!-- 机器人寻路：上游 SoloMapling 用 jgrapht 在录制移动数据上组图求最短/随机路径 -->
+        <dependency>
+            <groupId>org.jgrapht</groupId>
+            <artifactId>jgrapht-core</artifactId>
+            <version>${jgrapht.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jgrapht</groupId>
+            <artifactId>jgrapht-io</artifactId>
+            <version>${jgrapht.version}</version>
         </dependency>
     </dependencies>
 

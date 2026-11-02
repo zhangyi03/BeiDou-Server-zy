@@ -23,12 +23,17 @@ import org.gms.server.maps.MapleMap;
 import org.gms.soloMapling.BotCharacterFactory;
 import org.gms.soloMapling.BotClient;
 import org.gms.soloMapling.BotInventorySaver;
+import org.gms.soloMapling.BotRegistry;
+import org.gms.soloMapling.ArtificialPlayer.BotBrain;
 import org.gms.soloMapling.ArtificialPlayer.BotGeneration;
+import org.gms.soloMapling.ArtificialPlayer.BotPartySystem.BotPartyQueue;
 import org.gms.soloMapling.ArtificialPlayer.BotTier;
 import org.gms.soloMapling.ArtificialPlayer.BotTierStore;
 import org.gms.soloMapling.ArtificialPlayer.BotType;
+import org.gms.soloMapling.ArtificialPlayer.BotTypes.OPQ.OPQBot;
 import org.gms.soloMapling.ArtificialPlayer.BotDecoratorSystem.BotDecorate;
 import org.gms.soloMapling.ArtificialPlayer.BotShopSystem.BotShop;
+import org.gms.soloMapling.server.BotTickService;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Service;
@@ -36,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.awt.Point;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -93,6 +99,11 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
      * 在线机器人：bot_profile.id → Character
      */
     private final Map<Integer, Character> runningBots = new ConcurrentHashMap<>();
+
+    /**
+     * 行为大脑：bot_profile.id → BotBrain（目前只有 OPQ 类型会注册，其它类型站桩）
+     */
+    private final Map<Integer, BotBrain> runningBrains = new ConcurrentHashMap<>();
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
@@ -374,6 +385,7 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
             }
         }
         runningBots.put(profile.getId(), bot);
+        BotRegistry.register(bot);
 
         // 摆摊出售：上线即铺摊（地图不是自由市场房间时 BotShop 会打一次 warn 并跳过）
         if (BotType.SELLING_MERCHANT_BOT.name().equalsIgnoreCase(profile.getBotType())) {
@@ -384,6 +396,66 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
                         bot.getName(), bot.getId(), e.getMessage(), e);
             }
         }
+
+        // 行为大脑：只有实现了状态的类型才注册 tick，其余类型保持站桩
+        startBrain(profile, bot);
+    }
+
+    /**
+     * 按 {@code bot_type} 挂上对应的行为大脑。
+     *
+     * <p>目前只接了组队任务（OPQ）；其余类型还是「站桩 + 各自的特化动作」（比如摆摊在
+     * {@link #spawnOne} 里直接铺摊），等以后移植时往这里加分支即可。
+     */
+    private void startBrain(BotProfileDO profile, Character bot) {
+        BotBrain brain = null;
+        if (BotType.OPQ_BOT.name().equalsIgnoreCase(profile.getBotType())) {
+            if (bot.getLevel() < 51 || bot.getLevel() > 70) {
+                log.warn("[BotService] 机器人 {} 等级 {}，不在天空之城组队任务要求的 51~70 区间，进不了副本",
+                        bot.getName(), bot.getLevel());
+            }
+            brain = new OPQBot(bot, lobbyStation(profile));
+        }
+        if (brain == null) {
+            return;
+        }
+        runningBrains.put(profile.getId(), brain);
+        // 周期由大脑自己决定：摆摊走默认 500ms，组队任务跑图要走位密集，用 250ms
+        BotTickService.register(bot.getId(), brain::tick, brain.getTickPeriodMs());
+        log.info("[BotService] 机器人 {}（cid={}）已挂上 {}",
+                bot.getName(), bot.getId(), brain.getBrainName());
+    }
+
+    /**
+     * 组队任务机器人在招募大厅（200080101）的站位。
+     *
+     * <p>直接取 web 端「机器人列表」里这台机器配的 {@code spawn_x / spawn_y}：
+     * 进大厅后它就站在那儿不动，只有被撞开/被传送带偏才走回去。
+     * 两者都是 0（或没配）时返回 {@code null}，由 {@code OPQBot} 用自己的兜底点。
+     */
+    private static Point lobbyStation(BotProfileDO profile) {
+        Integer x = profile.getSpawnX();
+        Integer y = profile.getSpawnY();
+        if (x == null || y == null || (x == 0 && y == 0)) {
+            return null;
+        }
+        return new Point(x, y);
+    }
+
+    private void stopBrain(BotProfileDO profile, Character bot) {
+        BotBrain brain = runningBrains.remove(profile.getId());
+        if (brain == null) {
+            return;
+        }
+        if (brain instanceof OPQBot opqBot) {
+            opqBot.dispose();
+        } else {
+            brain.setRunning(false);
+        }
+        BotTickService.unregister(bot.getId());
+        BotPartyQueue.clear(bot.getId());
+        log.info("[BotService] 机器人 {}（cid={}）的 {} 已停止",
+                bot.getName(), bot.getId(), brain.getBrainName());
     }
 
     // ------------------------------------------------------------------ 外观 / 装备落库
@@ -550,6 +622,13 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
     private void despawnOne(BotProfileDO profile) {
         Character bot = runningBots.remove(profile.getId());
         if (bot != null) {
+            // 先停大脑（注销 tick、退出协调器），再收摊、摘地图
+            try {
+                stopBrain(profile, bot);
+            } catch (Exception e) {
+                log.warn("[BotService] 机器人 {}（cid={}）停止行为失败：{}",
+                        bot.getName(), bot.getId(), e.getMessage(), e);
+            }
             // 先收摊（广播移除摊位框、摘掉地图对象），再从地图移除角色
             try {
                 BotShop.closeStall(bot);
@@ -557,6 +636,7 @@ public class BotService implements ApplicationListener<ApplicationReadyEvent> {
                 log.warn("[BotService] 机器人 {}（cid={}）收摊失败：{}",
                         bot.getName(), bot.getId(), e.getMessage(), e);
             }
+            BotRegistry.unregister(bot.getId());
             BotGeneration.despawnBot(bot);
         }
     }
